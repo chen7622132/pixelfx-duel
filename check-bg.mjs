@@ -6,7 +6,8 @@ const page = await browser.newPage({ viewport: { width: 390, height: 844 }, devi
 const errs = [];
 page.on("pageerror", (e) => errs.push(e.message));
 page.on("console", (m) => { if (m.type() === "error") errs.push("C " + m.text()); });
-await page.goto("http://127.0.0.1:8157/index.html", { waitUntil: "domcontentloaded" });
+const URL = process.argv[2] ?? "http://127.0.0.1:8158/index.html";
+await page.goto(URL, { waitUntil: "domcontentloaded", timeout: 120000 });
 await page.waitForFunction(() => !!window.__game, null, { timeout: 30000 });
 await page.waitForTimeout(800);
 const out = {};

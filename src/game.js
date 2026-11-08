@@ -32,7 +32,7 @@ import * as cSkull from "../vendor/pixelfx/fx/critters/flying-skull.js";
 import * as uDmg from "../vendor/pixelfx/fx/ui/damage-number.js";
 import * as uCrit from "../vendor/pixelfx/fx/ui/crit-number.js";
 import * as uAlert from "../vendor/pixelfx/fx/ui/exclamation.js";
-import * as fTorch from "../vendor/pixelfx/fx/fire/torch.js";
+
 import * as tBurn from "../vendor/pixelfx/fx/transitions/burn-away.js";
 import * as spawnSoul from "../vendor/pixelfx/fx/spawn/soul-rise.js";
 import * as wFog from "../vendor/pixelfx/fx/weather/fog.js";
@@ -40,6 +40,9 @@ import * as wFirefly from "../vendor/pixelfx/fx/weather/fireflies.js";
 import * as wLeaves from "../vendor/pixelfx/fx/weather/falling-leaves.js";
 import * as wRays from "../vendor/pixelfx/fx/weather/god-rays.js";
 import * as wStars from "../vendor/pixelfx/fx/weather/shooting-stars.js";
+import * as fSpirit from "../vendor/pixelfx/fx/fire/spirit-flame.js";
+import * as fBrazier from "../vendor/pixelfx/fx/fire/brazier.js";
+import * as sSkulls from "../vendor/pixelfx/fx/shadow/necro-skulls.js";
 
 import * as gArrow from "../vendor/pixelfx/fx/moves/arrow-shot.js";
 import * as gDash from "../vendor/pixelfx/fx/moves/dash-strike.js";
@@ -94,15 +97,70 @@ const AMB = [
 let ambFx = [];
 function setStageFx(force) {
   if (!force && ambFx.stage === S.stage) return;
+  setStageDecor();
   ambFx = AMB[Math.min(S.stage, AMB.length - 1)].map(([m, o]) =>
     createFx(m, { x: 160, y: 170, seed: ri(1, 900), ...(o || {}) }));
   ambFx.stage = S.stage;
 }
 const ACTOR = stockActor(2);
-const TORCHES = [
-  createFx(fTorch, { x: 16, y: GROUND + 10, seed: 11 }),
-  createFx(fTorch, { x: 304, y: GROUND + 10, seed: 23 }),
+// 每层不同的场景道具 + 手绘剪影
+const PURPLE_FIRE = ["#0a0616", "#1e0c33", "#3a1560", "#5c2090", "#8a3ac0", "#b96be0", "#e0a8f5", "#f7e2ff"];
+const GREEN_FIRE = ["#04100a", "#0a2a18", "#124a26", "#1c6e34", "#2a9448", "#4cc066", "#88e09a", "#d8ffdc"];
+const DECOR = [
+  { dk: "#1a2e20", lt: "#4a7a52",
+    props: [[fSpirit, { x: 30, y: GROUND + 8, palette: GREEN_FIRE }], [fSpirit, { x: 290, y: GROUND + 8, palette: GREEN_FIRE, flip: true }]],
+    sils: [["tree", 62], ["tree", 258], ["mushroom", 88], ["mushroom", 236]] },
+  { dk: "#0f0c07", lt: "#8a7048",
+    props: [[fBrazier, { x: 34, y: GROUND + 14 }], [fBrazier, { x: 286, y: GROUND + 14, flip: true }]],
+    sils: [["pillar", 56], ["pillarTall", 152], ["pillar", 264]] },
+  { dk: "#241634", lt: "#9a5ae0",
+    props: [[sSkulls, { x: 160, y: GROUND - 34 }], [fSpirit, { x: 32, y: GROUND + 8, palette: PURPLE_FIRE }], [fSpirit, { x: 288, y: GROUND + 8, palette: PURPLE_FIRE, flip: true }]],
+    sils: [["rift", 96], ["rift", 226], ["rock", 132], ["rock", 190]] },
 ];
+let props = [];
+function setStageDecor() {
+  const d = DECOR[Math.min(S.stage, DECOR.length - 1)];
+  props = d.props.map(([m, o]) => createFx(m, { seed: ri(1, 900), ...o }));
+}
+function drawSil(kind, x, dk, lt) {
+  const p = painterFor(frame); p.place(0, 0);
+  if (kind === "tree") {
+    p.line(x, GROUND, x - 3, GROUND - 24, dk);
+    p.line(x - 3, GROUND - 24, x + 1, GROUND - 46, dk);
+    p.line(x - 3, GROUND - 27, x - 15, GROUND - 40, dk);
+    p.line(x - 1, GROUND - 36, x + 13, GROUND - 48, dk);
+    p.line(x + 1, GROUND - 45, x + 5, GROUND - 58, dk);
+    p.line(x + 1, GROUND - 41, x - 7, GROUND - 53, dk);
+  } else if (kind === "mushroom") {
+    p.rect(x - 1, GROUND - 7, 2, 7, dk);
+    p.disc(x, GROUND - 9, 3.5, lt);
+    p.dot(x - 2, GROUND - 10, dk);
+  } else if (kind === "pillar") {
+    p.rect(x - 7, GROUND - 42, 14, 42, dk);
+    p.rect(x - 9, GROUND - 47, 18, 5, dk);
+    p.rect(x - 10, GROUND - 4, 20, 4, dk);
+    p.rect(x - 9, GROUND - 47, 18, 1, lt);
+  } else if (kind === "pillarTall") {
+    p.rect(x - 8, GROUND - 62, 16, 62, dk);
+    p.rect(x - 10, GROUND - 68, 20, 6, dk);
+    p.rect(x - 11, GROUND - 4, 22, 4, dk);
+    p.rect(x - 10, GROUND - 68, 20, 1, lt);
+    p.rect(x - 3, GROUND - 50, 6, 2, dk);
+  } else if (kind === "arch") {
+    p.rect(x - 26, GROUND - 50, 6, 50, dk);
+    p.rect(x + 20, GROUND - 50, 6, 50, dk);
+    p.rect(x - 26, GROUND - 54, 52, 4, dk);
+    p.rect(x - 20, GROUND - 50, 40, 2, dk);
+  } else if (kind === "rift") {
+    p.line(x, GROUND, x + 3, GROUND - 22, dk);
+    p.line(x + 3, GROUND - 22, x - 2, GROUND - 44, dk);
+    p.line(x - 2, GROUND - 44, x + 2, GROUND - 64, dk);
+    p.line(x + 1, GROUND - 6, x + 4, GROUND - 26, lt);
+    p.line(x + 4, GROUND - 26, x - 1, GROUND - 42, lt);
+  } else if (kind === "rock") {
+    p.poly([[x - 8, GROUND], [x - 11, GROUND - 11], [x - 4, GROUND - 17], [x + 6, GROUND - 14], [x + 9, GROUND - 4], [x + 4, GROUND]], dk);
+  }
+}
 
 // ---- 技能池（8 个，初始 4 个，强化可解锁） --------------------------------
 const SKILL_POOL = {
@@ -825,7 +883,7 @@ function step(dt) {
   }
   if (atkFx) atkFx.update(dEff);
   if (transFx) transFx.update(dEff);
-  for (const t of TORCHES) t.update(dt);
+  for (const pr of props) pr.update(dt);
   for (const a of ambFx) a.update(dt);
   for (let i = floats.length - 1; i >= 0; i--) { floats[i].update(dEff); if (floats[i].done()) floats.splice(i, 1); }
   for (let i = rings.length - 1; i >= 0; i--) { rings[i].t += dEff; if (rings[i].t >= rings[i].life) rings.splice(i, 1); }
@@ -888,6 +946,11 @@ function draw() {
   clearFrame(frame);
   frame.color.set(BGS[Math.min(S.stage, BGS.length - 1)] || BGS[0]);
   for (const a of ambFx) a.draw(frame, "back");
+  {
+    const dd = DECOR[Math.min(S.stage, DECOR.length - 1)];
+    for (const [k, x] of dd.sils) drawSil(k, x, hex(dd.dk), hex(dd.lt));
+  }
+  for (const pr of props) pr.draw(frame, "back");
   const vis = foes.filter((f) => f.alive || f.deathT > 0).sort((a, b) => a.F.x - b.F.x);
 
   if (embers.length) {
@@ -897,8 +960,6 @@ function draw() {
       ep.dot(e.x, e.y, hex(k > 0.5 ? "#ffb060" : "#ff6a30"), 0.25 + k * 0.6);
     }
   }
-  for (const t of TORCHES) t.draw(frame, "back");
-
   for (const f of vis) {
     const F = f.F;
     if (F.air && (Math.abs(F.vy) > 110 || Math.abs(F.vx) > 70)) {
@@ -967,7 +1028,7 @@ function draw() {
     if (f.alertFx) { f.alertFx.options.x = F.x; f.alertFx.options.y = GROUND + f.def.oy + f.def.lift + F.y - 6; f.alertFx.draw(frame, "front"); }
   }
 
-  for (const t of TORCHES) t.draw(frame, "front");
+  for (const pr of props) pr.draw(frame, "front");
 
   if (rings.length) {
     const rp = painterFor(frame); rp.place(0, 0);

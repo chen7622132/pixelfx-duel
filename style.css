@@ -167,3 +167,18 @@ canvas{width:100%;height:auto;display:block;image-rendering:pixelated;image-rend
 .gate .cost{color:#c98b6c}
 .gate.risk b{color:#ff8a8a}
 .gate.rest b{color:#8ce0a0}
+
+/* 行动槽（左→右 = 结算顺序） */
+.slots{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin:8px 0 6px}
+.slot{height:46px;border:1px dashed #3a3348;display:grid;place-items:center;text-align:center;
+  font-size:10px;color:#4f4968;cursor:pointer;position:relative;line-height:1.25;padding:2px}
+.slot .n{position:absolute;left:4px;top:2px;font-size:8px;color:#4f4968}
+.slot.filled{border-style:solid;border-color:#6a5a7a;color:#e8e6f0;background:#1b1926}
+.slot.filled .n{color:#8f89a8}
+.slot.chain{border-color:#ff8a2a;background:#241a10}
+.slot b{display:block;font-size:11px;color:#ffcf9a;font-weight:600}
+.slot i{display:block;font-style:normal;font-size:9px;color:#7a7590}
+#execBtn{width:100%;padding:11px;margin:2px 0 0;font:inherit;font-size:14px;letter-spacing:.1em;
+  background:#2a1a10;border:1px solid var(--hot);color:#ffcf9a;cursor:pointer}
+#execBtn:active{transform:translateY(1px)}
+#execBtn:disabled{background:#191722;border-color:#2e2a3d;color:#4f4968;cursor:default}

@@ -173,6 +173,7 @@ const SKILL_POOL = {
   upper:  { mod: mUpper,  name: "上勾拳", tag: "打飞 · 高",  dmg: [14, 18], hit: 0.1,  power: 2, cd: 1, kb: { x: 60, y: -820 }, follow: { dmg: [5, 6], t: 0.34, kb: { x: 40, y: -400 } } },
   scythe: { mod: mScythe, name: "镰割",   tag: "吸血 40%",   dmg: [16, 20], hit: 0.16, power: 3, cd: 2, lifesteal: 0.4, kb: { x: 140, y: -380 } },
 };
+const CHAIN = { thrust: ["hammer"], flurry: ["scythe"], upper: ["cleave"], spin: ["scythe", "hammer"] };
 const BASE_SKILLS = ["slash", "thrust", "hammer", "spin"];
 const LOCKED_SKILLS = ["flurry", "cleave", "upper", "scythe"];
 
@@ -193,14 +194,14 @@ const FINISHERS = {
 
 // ---- 敌人池 --------------------------------------------------------------
 const FOE_POOL = {
-  slime: { mod: cSlime, name: "史莱姆", hp: 26, dmg: [4, 6],  oy: -6,  h: 88,  lift: 0,   uiY: 96,  pool: ["fireball-throw", "earth-stomp", "ground-pound", "sword-combo"] },
-  frog:  { mod: cFrog,  name: "沼泽蛙", hp: 30, dmg: [5, 7],  oy: -8,  h: 88,  lift: 0,   uiY: 96,  pool: ["ground-pound", "earth-stomp", "sword-combo", "dash-strike"] },
-  bat:   { mod: cBat,   name: "蝙蝠",   hp: 30, dmg: [5, 7],  oy: -34, h: 80,  lift: -14, uiY: 108, pool: ["lightning-call", "ice-lance-throw", "dash-strike", "meteor-call"] },
-  ghost: { mod: cGhost, name: "幽魂",   hp: 34, dmg: [6, 8],  oy: -10, h: 100, lift: -30, uiY: 116, pool: ["holy-smite", "rocket-launcher", "pistol-shots", "arrow-shot"] },
-  eye:   { mod: cEye,   name: "邪眼",   hp: 36, dmg: [7, 9],  oy: -12, h: 108, lift: -22, uiY: 120, pool: ["lightning-call", "holy-smite", "meteor-call", "pistol-shots"] },
-  wisp:  { mod: cWisp,  name: "鬼火",   hp: 28, dmg: [6, 8],  oy: -14, h: 104, lift: -34, uiY: 122, pool: ["fireball-throw", "lightning-call", "earth-stomp", "arrow-shot"] },
-  snake: { mod: cSnake, name: "巨蛇",   hp: 60, dmg: [7, 10], oy: -4,  h: 56,  lift: 0,   uiY: 66,  pool: ["dash-strike", "sword-combo", "ground-pound", "ice-lance-throw"], big: true },
-  skull: { mod: cSkull, name: "飞行头颅", hp: 66, dmg: [8, 11], oy: -16, h: 132, lift: -30, uiY: 128, pool: ["meteor-call", "holy-smite", "rocket-launcher", "lightning-call"], big: true },
+  slime: { mod: cSlime, name: "史莱姆", hp: 90,  dmg: [3, 5],  oy: -6,  h: 88,  lift: 0,   uiY: 96,  pool: ["fireball-throw", "earth-stomp", "ground-pound", "sword-combo"] },
+  frog:  { mod: cFrog,  name: "沼泽蛙", hp: 105, dmg: [3, 5],  oy: -8,  h: 88,  lift: 0,   uiY: 96,  pool: ["ground-pound", "earth-stomp", "sword-combo", "dash-strike"] },
+  bat:   { mod: cBat,   name: "蝙蝠",   hp: 105, dmg: [4, 6],  oy: -34, h: 80,  lift: -14, uiY: 108, pool: ["lightning-call", "ice-lance-throw", "dash-strike", "meteor-call"] },
+  ghost: { mod: cGhost, name: "幽魂",   hp: 120, dmg: [4, 6],  oy: -10, h: 100, lift: -30, uiY: 116, pool: ["holy-smite", "rocket-launcher", "pistol-shots", "arrow-shot"] },
+  eye:   { mod: cEye,   name: "邪眼",   hp: 125, dmg: [5, 7],  oy: -12, h: 108, lift: -22, uiY: 120, pool: ["lightning-call", "holy-smite", "meteor-call", "pistol-shots"] },
+  wisp:  { mod: cWisp,  name: "鬼火",   hp: 98,  dmg: [5, 7],  oy: -14, h: 104, lift: -34, uiY: 122, pool: ["fireball-throw", "lightning-call", "earth-stomp", "arrow-shot"] },
+  snake: { mod: cSnake, name: "巨蛇",   hp: 210, dmg: [5, 8], oy: -4,  h: 56,  lift: 0,   uiY: 66,  pool: ["dash-strike", "sword-combo", "ground-pound", "ice-lance-throw"], big: true },
+  skull: { mod: cSkull, name: "飞行头颅", hp: 230, dmg: [6, 9], oy: -16, h: 132, lift: -30, uiY: 128, pool: ["meteor-call", "holy-smite", "rocket-launcher", "lightning-call"], big: true },
 };
 
 const STAGES = [
@@ -234,7 +235,8 @@ const CRIT_PAL = ["#2a1a05", "#5a3a08", "#a06a0c", "#e8b030", "#ffe066", "#fff3c
 
 // ---- 状态 ----------------------------------------------------------------
 const S = {
-  phase: "ready", t: 0,
+  phase: "plan", t: 0,
+  slots: [null, null, null, null], intents: [], exec: null,
   hp: 120, maxhp: 120, shield: 0,
   skills: [...BASE_SKILLS],
   mods: { dmg: 1, energy: 1, crit: 0.12, regen: 0, kb: 1, fin: 1, healOnKill: 0, cd: 0, shield: 0, bleed: false },
@@ -422,38 +424,59 @@ function intentHint(f) {
   if (I.type === "guard") return n + " 要举盾 —— 伤害 -40%";
   return n + " 被打断了";
 }
-function pickActor() {
+function rollIntents() {
+  S.intents = [];
   const list = alive();
-  if (!list.length) return null;
-  const cand = list.filter((f) => f !== foes[S.actor]);
-  const pool = cand.length ? cand : list;
-  const f = pool[ri(0, pool.length - 1)];
-  S.actor = foes.indexOf(f);
-  for (const g of foes) g.intent = null;
-  f.intent = rollIntent(f);
-  if (f.intent.type === "heavy") {
-    f.alertFx = createFx(uAlert, { x: f.F.x, y: GROUND + f.def.oy + f.def.lift - 6, seed: ri(1, 900) });
-  }
+  list.forEach((f, i) => {
+    const it = rollIntent(f);
+    const r = Math.random();
+    // 信息分层：第 1 只全公开；第 2 只一半只显示图标；第 3 只多数彻底未知
+    const hide = i === 0 ? 0 : i === 1 ? (r < 0.5 ? 1 : 0) : (r < 0.7 ? 2 : 1);
+    S.intents.push({ foe: f, type: it.type, dmg: it.dmg, hide });
+    f.intent = it;
+    if (it.type === "heavy") {
+      f.alertFx = createFx(uAlert, { x: f.F.x, y: GROUND + f.def.oy + f.def.lift - 6, seed: ri(1, 900) });
+    }
+  });
+  for (const g of foes) if (!list.includes(g)) g.intent = null;
   paintFoeBars(); paintStatus();
-  return f;
 }
 
 // ---- 出招 ----------------------------------------------------------------
-function chooseMove(i) {
+function fillSlot(skillId) {
   ensureAudio();
-  if (S.phase !== "ready") return;
-  if (i === S.skills.length) return startFinisher();
-  if (i >= S.skills.length) return;
-  if (S.cd[i] > 0) return;
-  const m = curSkill(i);
-  S.phase = "player"; S.t = 0; S.hit = false; S.moveIx = i;
-  S.cd = S.cd.map((c) => Math.max(0, c - 1));
-  S.cd[i] = Math.max(0, m.cd - S.mods.cd);
-  const f = tgt();
-  S.dashTo = Math.max(30, Math.min(150, f.F.x - 62));
-  atkFx = createFx(m.mod, { x: pPos, y: GROUND, seed: ri(1, 900) });
-  hint(m.name + (m.area ? "（全体）" : ""));
-  paintButtons();
+  if (S.phase !== "plan") return;
+  const si = S.skills.indexOf(skillId);
+  if (si < 0) return;
+  if ((S.cd[si] || 0) > 0) { hint(SKILL_POOL[skillId].name + " 冷却中（还要 " + S.cd[si] + " 回合）"); return; }
+  if (S.slots.includes(skillId)) { hint("同一招一回合只能排一次"); return; }
+  const i = S.slots.indexOf(null);
+  if (i < 0) { hint("槽位满了 —— 点槽位可以清空"); return; }
+  S.slots[i] = skillId;
+  renderSlots(); paintButtons();
+  hint("第 " + (i + 1) + " 位 · " + SKILL_POOL[skillId].name);
+}
+function clearSlot(i) {
+  if (S.phase !== "plan") return;
+  const rest = S.slots.filter((x, k) => k !== i && x);
+  S.slots = rest.concat([null, null, null, null]).slice(0, 4);
+  renderSlots(); paintButtons();
+}
+function chainOf(prev, cur) { return !!(prev && cur && (CHAIN[prev] || []).includes(cur)); }
+function buildExec() {
+  if (S.phase !== "plan") return;
+  const list = [];
+  const n = Math.max(S.slots.filter(Boolean).length, S.intents.length);
+  for (let i = 0; i < n; i++) {
+    const sid = S.slots[i];
+    if (sid) list.push({ side: "me", id: sid, chain: chainOf(S.slots[i - 1], sid) });
+    if (S.intents[i]) list.push({ side: "foe", ix: i });
+  }
+  if (!list.length) { hint("先排至少一个技能"); return; }
+  S.exec = { list, ix: 0, t: 0, started: false, hit: false };
+  S.phase = "exec"; S.t = 0;
+  hint("执行编排 —— 双方沿时间轴交锋");
+  renderSlots(); paintButtons();
 }
 function dmgOf(base) { return Math.max(1, Math.round(base * S.mods.dmg)); }
 function comboMul() { return 1 + Math.min(S.combo, 10) * 0.03; }
@@ -477,10 +500,10 @@ function hitFoe(f, dmg, power, opts = {}) {
   if (opts.crit) addFx(iFrame, { x: f.F.x, y: GROUND + f.def.lift - 34, seed: ri(1, 900) });
   if (f.hp <= 0) killFoe(f);
 }
-function resolveHit() {
-  const m = curSkill(S.moveIx);
+function meHit(id, chain) {
+  const m = SKILL_POOL[id];
   const f = tgt();
-  let dmg = Math.round(dmgOf(ri(m.dmg[0], m.dmg[1])) * comboMul());
+  let dmg = Math.round(dmgOf(ri(m.dmg[0], m.dmg[1])) * comboMul() * (chain ? 1.5 : 1));
   let crit = Math.random() < S.mods.crit || (m.stun && Math.random() < 0.3);
   let broke = false, guarded = false;
   if (m.break && f.intent && f.intent.type === "heavy") {
@@ -493,7 +516,8 @@ function resolveHit() {
   if (f.guard) { dmg = Math.round(dmg * 0.6); f.guard = false; guarded = true; }
   addEnergy(12);
   bumpCombo();
-  hint(broke ? "识破！打断蓄力" : guarded ? "被护盾吸收" : crit ? "暴击" : "命中");
+  if (chain) { addRing(f.F.x, GROUND + f.def.lift - 50, 3); sfx(2); }
+  hint((chain ? "连携！" : "") + (broke ? "识破！" : crit ? "暴击 " : "") + m.name);
 
   if (m.area) {
     const list = alive();
@@ -503,19 +527,21 @@ function resolveHit() {
       g.hitT = 0.24;
       g.F.vx += m.kb.x * 0.8 * S.mods.kb; g.F.vy += m.kb.y * 0.8 * S.mods.kb; g.F.air = true;
       addFx(uDmg, { x: g.F.x + ri(-8, 8), y: GROUND + g.def.lift + g.F.y - 66, text: "-" + d2 });
-      if (S.mods.bleed && !g.bleed) { g.bleed = 3; g.dotFx = createFx(sBleeding, { x: g.F.x, y: GROUND + g.def.oy + g.def.lift + 6, seed: 7 }); }
+      if ((m.bleed || S.mods.bleed) && !g.bleed) {
+        g.bleed = 3;
+        g.dotFx = createFx(sBleeding, { x: g.F.x, y: GROUND + g.def.oy + g.def.lift + 6, seed: 7 });
+      }
       if (g.hp <= 0) killFoe(g);
     }
     impact(m.power, "foe", f);
     addRing(f.F.x, GROUND + f.def.lift - 30, 3);
-    log("hit", m.name + " 全体 · " + dmg + " ×" + list.length);
+    log("hit", (chain ? "连携 " : "") + m.name + " 全体 " + dmg + " ×" + list.length);
   } else {
     hitFoe(f, dmg, Math.min(4, m.power + (crit ? 1 : 0)), { kb: m.kb, crit });
-    log("hit", m.name + " · " + dmg + (broke ? "（打断）" : guarded ? "（被盾）" : crit ? "（暴击）" : "") + (f.hp <= 0 ? " · 击杀" : ""));
+    log("hit", (chain ? "连携 " : "") + m.name + " " + dmg + (broke ? "（打断）" : guarded ? "（被盾）" : crit ? "（暴击）" : "") + (f.hp <= 0 ? " · 击杀" : ""));
     if (m.lifesteal) {
       const heal = Math.round(dmg * m.lifesteal);
       S.hp = Math.min(S.maxhp, S.hp + heal);
-      hint("吸血 +" + heal);
       paintBars();
     }
   }
@@ -524,20 +550,32 @@ function resolveHit() {
     f.bleed = 3;
     f.dotFx = createFx(sBleeding, { x: f.F.x, y: GROUND + f.def.oy + f.def.lift + 6, seed: 7 });
   }
-  if (m.follow) followT = m.follow.t;
   paintFoeBars(); paintStatus();
 }
-function doFollow() {
-  const m = curSkill(S.moveIx);
-  if (!m.follow) return;
-  const f = tgt();
-  if (!f.alive) return;
-  S.dashTo = Math.max(30, Math.min(150, f.F.x - 62));
-  const dmg = Math.round(dmgOf(ri(m.follow.dmg[0], m.follow.dmg[1])) * comboMul());
-  hitFoe(f, dmg, 1, { kb: m.follow.kb });
-  hint("追打 " + dmg);
-  if (f.hp > 0) log("hit", "追击 · " + dmg);
+function startAction(a) {
+  if (a.side === "me") {
+    const m = SKILL_POOL[a.id];
+    const f = tgt();
+    S.dashTo = Math.max(30, Math.min(150, f.F.x - 62));
+    atkFx = createFx(m.mod, { x: pPos, y: GROUND, seed: ri(1, 900) });
+    a.hitAt = m.hit;
+    a.dur = Math.min(1.15, m.hit + 0.6);
+  } else {
+    const it = S.intents[a.ix];
+    a.foe = it ? it.foe : null;
+    a.hitAt = 0.22;
+    a.dur = 0.72;
+    if (a.foe) S.dashTo = PX;
+  }
 }
+function doAction(a) {
+  if (a.side === "me") { meHit(a.id, a.chain); atkFx = null; }
+  else if (a.foe && a.foe.alive) {
+    const it = S.intents[a.ix];
+    foeHit(a.foe, { type: it.type, dmg: it.dmg });
+  }
+}
+
 function killFoe(f) {
   if (!f.alive) return;
   f.alive = false; f.deathT = 1.1; f.intent = null;
@@ -566,48 +604,27 @@ function beginClear() {
   $("cine").classList.add("on");
 }
 
-function endTurn() {
+function endRound() {
+  S.exec = null;
+  S.slots = [null, null, null, null];
   S.cd = S.cd.map((c) => Math.max(0, c - 1));
-  if (!alive().length) return;
-  if (S.hp <= 0) return gameOver(false);
-  S.phase = "ready"; S.t = 0; S.round += 1;
+  S.round += 1;
+  S.t = 0;
   if (S.mods.regen) { S.hp = Math.min(S.maxhp, S.hp + S.mods.regen); paintBars(); }
   if (S.mods.shield) { S.shield = S.mods.shield; paintBars(); }
-  const f = pickActor();
-  hint(f ? intentHint(f) : "选一招");
-  paintButtons(); paintStatus();
-}
-function enemyTurn() {
-  if (S.hp <= 0) return gameOver(false);
   if (S.poison > 0) { S.poison -= 1; S.hp = Math.max(0, S.hp - 3); log("hurt", "中毒 -3"); paintBars(); }
-  const f = foes[S.actor];
-  if (!f || !f.alive) return endTurn();
-  if (f.bleed > 0) {
-    f.bleed -= 1; f.hp = Math.max(0, f.hp - 3);
-    addFx(uDmg, { x: f.F.x + ri(-8, 8), y: GROUND + f.def.lift - 66, text: "-3" });
-    log("hit", "流血 -3"); paintFoeBars();
-    if (f.hp <= 0) { killFoe(f); return endTurn(); }
-  }
-  if (f.stun) {
-    f.stun = false;
-    addFx(sStun, { x: f.F.x, y: GROUND + f.def.lift - 62, seed: 5 });
-    hint(f.def.name + " 被击晕，跳过回合");
-    log("sys", f.def.name + " 眩晕");
-    paintStatus();
-    return endTurn();
-  }
-  if (f.intent && f.intent.type === "stunned") { hint("蓄力被打断"); return endTurn(); }
-  S.phase = "enemy"; S.t = 0; S.hit = false;
-  hint(f.intent ? intentHint(f) : f.def.name + " 反击…");
+  if (S.pendingClear) return beginClear();
+  if (S.hp <= 0) return gameOver(false);
+  rollIntents();
+  S.phase = "plan";
+  renderSlots(); paintButtons(); paintStatus();
+  hint("编排行动 —— 点技能填进槽位");
 }
-function enemyStrike() {
-  const f = foes[S.actor];
-  if (!f || !f.alive) return;
-  const I = f.intent || { type: "attack", dmg: 6 };
+function foeHit(f, intent) {
+  const I = intent || { type: "attack", dmg: 6 };
   if (I.type === "guard") {
     f.guard = true;
     addFx(iShield, { x: f.F.x, y: GROUND + f.def.lift - 30, seed: 3 });
-    hint(f.def.name + " 举起了护盾");
     log("sys", f.def.name + " 举盾 · 伤害 -40%");
     paintStatus();
     return;
@@ -615,19 +632,17 @@ function enemyStrike() {
   if (I.type === "debuff") {
     S.poison = 3;
     addFx(sPoison, { x: pPos, y: GROUND, seed: 11 });
-    hint("你中毒了（3 回合）");
-    log("hurt", "中毒 3 回合 · 每回合 -3");
+    hint("中毒 3 回合");
+    log("hurt", f.def.name + " · 放毒");
     paintStatus();
     return;
   }
   let dmg = I.dmg;
   if (S.shield > 0) {
-    const absorbed = Math.min(S.shield, dmg);
-    S.shield -= absorbed; dmg -= absorbed;
-    hint("护盾吸收 " + absorbed);
+    const ab = Math.min(S.shield, dmg);
+    S.shield -= ab; dmg -= ab;
   }
-  if (dmg > 0) S.hp = Math.max(0, S.hp - dmg);
-  if (dmg > 0) S.combo = 0;   // 挨打断连击
+  if (dmg > 0) { S.hp = Math.max(0, S.hp - dmg); S.combo = 0; }
   addEnergy(6);
   const heavy = I.type === "heavy";
   playerHit = 0.26;
@@ -637,7 +652,7 @@ function enemyStrike() {
   addFx(heavy ? iCrit : iBlunt, { x: pPos + 16, y: GROUND - 24, seed: ri(1, 900) });
   if (heavy) addFx(iFrame, { x: pPos, y: GROUND - 34, seed: ri(1, 900) });
   flash("red");
-  hint((heavy ? "重击 " : "受到 ") + dmg + " 伤害");
+  hint(f.def.name + (heavy ? " 重击 " : " 攻击 ") + dmg);
   log("hurt", f.def.name + " · " + (heavy ? "重击 -" : "攻击 -") + dmg);
   paintBars();
 }
@@ -647,6 +662,11 @@ function addEnergy(n) {
   S.energy = Math.min(MAX_ENERGY, S.energy + n * S.mods.energy);
   paintFin();
 }
+function chooseMove(i) {
+  // 兼容旧调用：只有终结技走这里（技能在编排阶段填槽）
+  if (i >= S.skills.length) startFinisher();
+}
+
 function startFinisher(forceId) {
   if (S.energy < MAX_ENERGY) { hint("能量不足（" + Math.round(S.energy) + " / " + MAX_ENERGY + "）"); return; }
   const live = alive();
@@ -748,10 +768,10 @@ function startWave() {
     for (const f of foes) { f.hp = Math.round(f.hp * 1.6); f.maxhp = f.hp; }
     S.eliteWave = false;
   }
-  const f = pickActor();
-  S.phase = "ready"; S.t = 0;
-  paintBars(); paintButtons(); paintFin(); paintStatus(); paintProgress();
-  hint((f ? intentHint(f) : "选一招") + "   [" + STAGES[S.stage].name + " " + (S.wave + 1) + "/3]");
+  rollIntents();
+  S.phase = "plan"; S.t = 0; S.slots = [null, null, null, null];
+  paintBars(); paintButtons(); paintFin(); paintStatus(); paintProgress(); renderSlots();
+  hint("编排行动 [" + STAGES[S.stage].name + " " + (S.wave + 1) + "/3]");
 }
 
 function nextWave() {
@@ -841,10 +861,10 @@ function restart() {
   renderSkills();
   setStageFx(true);
   spawnWave();
-  const f = pickActor();
-  S.phase = "ready"; S.t = 0;
-  paintBars(); paintButtons(); paintFin(); paintStatus(); paintProgress();
-  hint(f ? intentHint(f) : "选一招");
+  rollIntents();
+  S.phase = "plan"; S.t = 0; S.slots = [null, null, null, null];
+  paintBars(); paintButtons(); paintFin(); paintStatus(); paintProgress(); renderSlots();
+  hint("编排行动 —— 点技能填进槽位");
 }
 
 // ---- 主循环 --------------------------------------------------------------
@@ -859,10 +879,10 @@ function step(dt) {
   if (hitstop > 0) { hitstop -= dt; return; }
   const cineLike = ["cineIn", "cine", "cineOut"].includes(S.phase);
   for (const f of foes) physicsOf(f, dt);
-  const pTarget = cineLike ? S.cinePX : (S.phase === "player" || S.phase === "pause") ? (S.dashTo ?? PX) : PX;
+  const pTarget = cineLike ? S.cinePX : (S.phase === "exec" || S.phase === "plan") ? (S.dashTo ?? PX) : PX;
   pPos += (pTarget - pPos) * (1 - Math.exp(-dt * 16));
   const fr = tgt();
-  const pYTarget = (S.phase === "player" || S.phase === "pause") && fr ? Math.max(-52, Math.min(0, fr.F.y)) : 0;
+  const pYTarget = (S.phase === "exec") && fr ? Math.max(-52, Math.min(0, fr.F.y)) : 0;
   pY += (pYTarget - pY) * (1 - Math.exp(-dt * 11));
   const lbT = (S.phase === "cineIn" || S.phase === "cine") ? 16 : 0;
   lb += (lbT - lb) * (1 - Math.exp(-dt * 13));
@@ -903,17 +923,20 @@ function step(dt) {
   if (followT > 0) { followT -= dEff; if (followT <= 0 && S.phase === "player") doFollow(); }
 
   switch (S.phase) {
-    case "player":
-      if (!S.hit && S.t >= curSkill(S.moveIx).hit) { S.hit = true; resolveHit(); }
-      if (atkFx && atkFx.done()) { atkFx = null; S.phase = "pause"; S.t = 0; }
+    case "exec": {
+      const ex = S.exec;
+      if (!ex) { endRound(); break; }
+      const a = ex.list[ex.ix];
+      if (!a) { endRound(); break; }
+      if (!ex.started) { startAction(a); ex.started = true; ex.t = 0; ex.hit = false; }
+      ex.t += dEff;
+      if (!ex.hit && ex.t >= a.hitAt) { ex.hit = true; doAction(a); }
+      if (ex.t >= a.dur) {
+        ex.ix += 1; ex.started = false; ex.hit = false;
+        if (ex.ix >= ex.list.length) endRound();
+      }
       break;
-    case "pause":
-      if (S.t >= 0.32) { if (S.pendingClear) return beginClear(); enemyTurn(); }
-      break;
-    case "enemy":
-      if (!S.hit && S.t >= 0.18) { S.hit = true; enemyStrike(); }
-      if (S.t >= 0.92) { if (S.pendingClear) return beginClear(); endTurn(); }
-      break;
+    }
     case "cineIn":
       if (S.t >= 0.5) { S.phase = "cine"; S.t = 0; $("cine").classList.add("on"); }
       break;
@@ -926,9 +949,9 @@ function step(dt) {
         S.fin = null;
         if (S.pendingClear) return beginClear();
         if (S.phase === "clear") return;
-        S.phase = "ready"; S.t = 0;
-        hint(intentHint(foes[S.actor]));
-        paintButtons(); paintFin();
+        S.phase = "plan"; S.t = 0;
+        hint("编排下一回合");
+        paintButtons(); paintFin(); renderSlots();
       }
       break;
     case "clear":
@@ -943,6 +966,9 @@ function step(dt) {
 
 // ---- 绘制 ----------------------------------------------------------------
 function draw() {
+  const curA = S.exec ? S.exec.list[S.exec.ix] : null;
+  const lungeOf = (f) => (S.phase === "exec" && curA && curA.side === "foe" && curA.foe === f)
+    ? Math.sin(Math.min(1, S.exec.t / 0.72) * Math.PI) * 40 : 0;
   clearFrame(frame);
   frame.color.set(BGS[Math.min(S.stage, BGS.length - 1)] || BGS[0]);
   for (const a of ambFx) a.draw(frame, "back");
@@ -973,17 +999,17 @@ function draw() {
       }
     }
     if (f.fx) {
-      f.fx.options.x = F.x + (f.hitT > 0 ? rnd(-1.5, 1.5) : 0);
+      f.fx.options.x = F.x - lungeOf(f) + (f.hitT > 0 ? rnd(-1.5, 1.5) : 0);
       f.fx.options.y = GROUND + f.def.oy + f.def.lift + F.y + (f.sink || 0);
       f.fx.draw(frame, "back");
     }
   }
   if (atkFx) atkFx.draw(frame, "back");
 
-  const lean = S.phase === "player" ? Math.sin(Math.min(1, S.t / 0.9) * Math.PI) * 7 : 0;
+  const lean = S.phase === "exec" && curA && curA.side === "me" ? Math.sin(Math.min(1, S.exec.t / 0.8) * Math.PI) * 7 : 0;
   if (atkFx) atkFx.options.x = pPos;
   const pT = (S.dashTo ?? PX);
-  const dashing = (S.phase === "player" || S.phase === "pause") && Math.abs(pT - pPos) > 5;
+  const dashing = S.phase === "exec" && Math.abs(pT - pPos) > 5;
   if (dashing) {
     const dir = Math.sign(pT - pPos) || 1;
     for (let i = 2; i >= 1; i--) {
@@ -1001,7 +1027,7 @@ function draw() {
   for (const f of vis) {
     const F = f.F;
     if (f.fx) {
-      f.fx.options.x = F.x + (f.hitT > 0 ? rnd(-1.5, 1.5) : 0);
+      f.fx.options.x = F.x - lungeOf(f) + (f.hitT > 0 ? rnd(-1.5, 1.5) : 0);
       f.fx.options.y = GROUND + f.def.oy + f.def.lift + F.y + (f.sink || 0);
       f.fx.draw(frame, "front");
     }
@@ -1117,8 +1143,27 @@ function renderSkills() {
   html += '<button class="mv fin" data-i="' + S.skills.length + '"><em>Q</em><b>终结技</b><i id="finTip">能量 0 / 100</i><s id="finDmg"></s><u></u></button>';
   box.innerHTML = html;
   btns = [...box.querySelectorAll(".mv")];
-  btns.forEach((b) => b.addEventListener("click", () => chooseMove(+b.dataset.i)));
+  btns.forEach((b) => b.addEventListener("click", () => {
+  const i = +b.dataset.i;
+  if (i >= S.skills.length) chooseMove(i); else fillSlot(S.skills[i]);
+}));
+$("execBtn").addEventListener("click", buildExec);
 }
+function renderSlots() {
+  const box = $("slots");
+  box.innerHTML = S.slots.map((id, i) => {
+    const k = id ? SKILL_POOL[id] : null;
+    const ch = id && chainOf(S.slots[i - 1], id);
+    return '<div class="slot' + (k ? " filled" : "") + (ch ? " chain" : "") + '" data-i="' + i + '">'
+      + '<span class="n">' + (i + 1) + "</span>"
+      + (k ? "<b>" + k.name + "</b><i>" + (ch ? "连携!" : (k.area ? "全体" : "单体")) + "</i>" : "空")
+      + "</div>";
+  }).join("");
+  box.querySelectorAll(".slot").forEach((el) => el.addEventListener("click", () => clearSlot(+el.dataset.i)));
+  const b = $("execBtn");
+  b.disabled = S.phase !== "plan" || !S.slots.some(Boolean);
+}
+
 function paintBars() {
   $("php").style.transform = "scaleX(" + clamp01(S.hp / S.maxhp) + ")";
   $("pht").textContent = Math.max(0, S.hp) + (S.shield > 0 ? "+" + S.shield : "") + "/" + S.maxhp;
@@ -1149,10 +1194,12 @@ function paintFoeBars() {
 }
 function paintStatus() {
   const e = [];
-  const f = foes[S.actor];
-  if (f && f.intent && f.alive) {
-    const t = { heavy: "蓄力", attack: "攻击", guard: "举盾", debuff: "放毒", stunned: "被打断" }[f.intent.type] || "?";
-    e.push("<span>" + f.def.name + " · " + t + "</span>");
+  const alive = foes.filter((f) => f.alive && !f.fade);
+  if (alive.length) {
+    const L = { heavy: "蓄力", attack: "攻", guard: "守", debuff: "毒", stunned: "断" };
+    const cnt = {};
+    for (const f of alive) { const t = (f.intent && f.intent.type) || "?"; cnt[t] = (cnt[t] || 0) + 1; }
+    e.push("<span>" + alive.length + " 敌 · " + Object.entries(cnt).map(([k, v]) => L[k] + "×" + v).join(" ") + "</span>");
   }
   $("estatus").innerHTML = e.length ? e.join("") : '<span class="none">没有威胁</span>';
   const p = [];
@@ -1177,15 +1224,15 @@ function paintButtons() {
     if (i === S.skills.length) return;
     const cool = (S.cd[i] || 0) > 0;
     b.classList.toggle("cool", cool);
-    b.classList.toggle("busy", S.phase !== "ready" || cool);
+    b.classList.toggle("busy", S.phase !== "plan" || cool);
     b.querySelector("u").style.width = cool ? "100%" : "0";
     const m = SKILL_POOL[S.skills[i]];
     if (m.break) b.classList.toggle("hint-break", canBreak && !cool);
     const pv = previewOf(i);
     const dEl = b.querySelector("s");
     if (dEl) dEl.textContent = pv.lo + "-" + pv.hi;
-    b.classList.toggle("lethal", pv.kill && S.phase === "ready");
-    b.classList.toggle("chance", !pv.kill && pv.chance && S.phase === "ready");
+    b.classList.toggle("lethal", pv.kill && S.phase === "plan");
+    b.classList.toggle("chance", !pv.kill && pv.chance && S.phase === "plan");
   });
   paintFin();
 }
@@ -1194,7 +1241,7 @@ function paintFin() {
   if (!b) return;
   const armed = S.energy >= MAX_ENERGY;
   b.classList.toggle("armed", armed);
-  b.classList.toggle("busy", S.phase !== "ready" || !armed);
+  b.classList.toggle("busy", S.phase !== "plan" || !armed);
   b.querySelector("u").style.width = clamp01(S.energy / MAX_ENERGY) * 100 + "%";
   const tip = $("finTip");
   if (tip) tip.textContent = armed ? "就绪 · 按 Q" : "能量 " + Math.round(S.energy) + " / " + MAX_ENERGY;
@@ -1222,8 +1269,14 @@ function flash(kind) {
 $("ovBtn").addEventListener("click", restart);
 addEventListener("keydown", (e) => {
   const i = "123456".indexOf(e.key);
-  if (i >= 0) { e.preventDefault(); chooseMove(i); }
-  if (e.key === "q" || e.key === "Q" || e.key === " ") { e.preventDefault(); chooseMove(S.skills.length); }
+  if (i >= 0) {
+    e.preventDefault();
+    if (i < S.skills.length) fillSlot(S.skills[i]);
+    else chooseMove(i);
+  }
+  if (e.key === " " || e.key === "Enter") { e.preventDefault(); buildExec(); }
+  if (e.key === "q" || e.key === "Q") { e.preventDefault(); chooseMove(S.skills.length); }
+  if (e.key === "Backspace") { e.preventDefault(); clearSlot(3); }
   if (e.key === "Tab") {
     e.preventDefault();
     const l = alive();
@@ -1241,19 +1294,23 @@ cv.addEventListener("pointerdown", (e) => {
 // ---- 启动 ----------------------------------------------------------------
 renderSkills();
 spawnWave();
-const f0 = pickActor();
-paintBars(); paintButtons(); paintFin(); paintStatus(); paintProgress();
-hint(f0 ? intentHint(f0) : "选一招");
+rollIntents();
+S.phase = "plan";
+paintBars(); paintButtons(); paintFin(); paintStatus(); paintProgress(); renderSlots();
+hint("编排行动 —— 点技能填进槽位，再点执行");
 requestAnimationFrame(tick);
 
 window.__game = {
   S, foes, chooseMove, SKILL_POOL, FINISHERS, STAGES, UPGRADES, addEnergy, startFinisher,
   paintButtons, previewOf, log, applyUpgrade, offerUpgrade, nextWave, offerRoute, pickRoute, setStageFx, startWave,
+  fillSlot, clearSlot, buildExec, rollIntents,
   dbg: () => ({
     hitstop, zoom, flashN, whiteN, wallHits, floorHits, audio: !!AC && AC.state,
     phase: S.phase, stage: S.stage, wave: S.wave, round: S.round, kills: S.kills,
     hp: S.hp, maxhp: S.maxhp, shield: S.shield, skills: S.skills.slice(), mods: { ...S.mods },
     target: S.target, actor: S.actor, upChoices: S.upChoices && S.upChoices.map((u) => u.id),
+    slots: S.slots.slice(), execIx: S.exec ? S.exec.ix : -1, execLen: S.exec ? S.exec.list.length : 0,
+    intents: S.intents.map((i) => i.type + (i.hide ? "(h" + i.hide + ")" : "") + ":" + i.dmg),
     foes: foes.map((f) => ({ name: f.def.name, hp: f.hp, max: f.maxhp, alive: f.alive,
       intent: f.intent && f.intent.type, x: +f.F.x.toFixed(1), y: +f.F.y.toFixed(1), air: f.F.air, big: !!f.big })),
   }),

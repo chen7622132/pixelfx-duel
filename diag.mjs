@@ -1,0 +1,11 @@
+import { chromium } from "playwright";
+const browser = await chromium.launch();
+const page = await browser.newPage();
+const logs = [];
+page.on("console", (m) => logs.push(m.type() + ": " + m.text()));
+page.on("pageerror", (e) => logs.push("PAGEERROR: " + e.message + "\n" + (e.stack||"").split("\n").slice(0,4).join("\n")));
+await page.goto(process.argv[2] ?? "http://127.0.0.1:8163/index.html", { waitUntil: "domcontentloaded" });
+await page.waitForTimeout(3000);
+console.log(logs.slice(0, 8).join("\n---\n") || "no logs");
+console.log("has __game:", await page.evaluate(() => !!window.__game));
+await browser.close();

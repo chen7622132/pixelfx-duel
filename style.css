@@ -55,6 +55,25 @@ canvas{width:100%;height:auto;display:block;image-rendering:pixelated;image-rend
 .mv b{font-size:14px;letter-spacing:.02em}
 .mv i{display:block;font-style:normal;font-size:10px;color:var(--dim);margin-top:3px}
 .mv u{position:absolute;left:0;bottom:0;height:2px;width:0;background:var(--hot)}
+/* 伤害预览数字（右上角） */
+.mv s{position:absolute;right:7px;top:8px;text-decoration:none;font-size:11px;color:#8d87a6;
+  font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.mv.lethal{border-color:#3f7d54;background:transparent}
+.mv.lethal s{color:#8ce0a0}
+.mv.lethal::before{content:"必杀";position:absolute;left:-1px;top:-7px;font-size:9px;
+  background:#274a33;color:#9edcb0;padding:1px 4px;letter-spacing:.05em}
+.mv.chance s{color:#e8c060}
+
+/* 伤害日志 */
+.log{list-style:none;margin:9px 0 0;padding:0;font-size:11px;color:#8a84a2;
+  display:grid;gap:1px;max-height:76px;overflow:hidden;font-variant-numeric:tabular-nums}
+.log li{display:flex;gap:7px;line-height:1.5}
+.log li span{flex:0 0 26px;color:#5e5878}
+.log li b{font-weight:600;color:#cfc9e0}
+.log li.hit b{color:#ffd18a}
+.log li.hurt b{color:#ff8585}
+.log li.sys b{color:#8ab4ff}
+.log li.win b{color:#8ce0a0}
 .mv.ready:hover{border-color:#5b5474}
 .mv.busy{opacity:.45;cursor:default}
 .mv.cool{border-color:#4a3a24}

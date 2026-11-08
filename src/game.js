@@ -116,6 +116,7 @@ const S = {
   fin: null, cinePX: PX, cineEX: EX, slow: 0,
   breakFx: 0,
   usedFins: new Set(),
+  log: [],
 };
 let atkFx = null, foeFx = null, foeDotFx = null, transFx = null, alertFx = null;
 const floats = [];
@@ -254,6 +255,7 @@ function resolveHit() {
   if (m.stun) { S.stun = true; addFx(sStun, { x: ePos, y: GROUND - 62, seed: 3 }); }
   if (m.bleed && !S.bleed) { S.bleed = 3; setFoeDot("bleed"); }
   hint(broke ? "识破！打断蓄力，造成 " + dmg : guarded ? "被护盾吸收，仅 " + dmg : crit ? "暴击 " + dmg : "命中 " + dmg);
+  log("hit", m.name + " · " + dmg + (broke ? "（打断）" : guarded ? "（被盾吸收）" : crit ? "（暴击）" : "") + (S.fhp <= 0 ? " · 击杀" : ""));
   paintBars(); paintStatus();
 }
 
@@ -278,6 +280,7 @@ function enemyTurn() {
   if (dot) {
     S.fhp = Math.max(0, S.fhp - dot);
     addFx(uDmg, { x: ePos + ri(-8, 8), y: GROUND - 66, text: "-" + dot });
+    log("hit", "流血持续 -" + dot);
     paintBars();
     if (S.fhp <= 0) return startKill();
   }
@@ -303,6 +306,7 @@ function enemyStrike() {
     S.foeGuard = true;
     addFx(iShield, { x: ePos, y: GROUND - 30, seed: 3 });
     hint("对手举起了护盾");
+    log("sys", "对手举盾 · 下次伤害 -40%");
     paintStatus();
     return;
   }
@@ -310,6 +314,7 @@ function enemyStrike() {
     S.poison = 3;
     addFx(sPoison, { x: pPos, y: GROUND, seed: 11 });
     hint("你中毒了（3 回合）");
+    log("hurt", "中毒 3 回合 · 每回合 -3");
     paintStatus();
     return;
   }
@@ -322,6 +327,7 @@ function enemyStrike() {
   addFx(iBlunt, { x: pPos + 16, y: GROUND - 24, seed: ri(1, 900) });
   flash(heavy ? "red" : "red");
   hint(heavy ? "重击 " + dmg + "！" : "受到 " + dmg + " 伤害");
+  log("hurt", (heavy ? "重击" : "攻击") + " · -" + dmg);
   paintBars();
 }
 
@@ -368,6 +374,7 @@ function startKill() {
   S.intent = null;
   transFx = createFx(tBurn, { x: W / 2, y: H / 2, seed: ri(1, 900) });
   hint("击败 " + FOES[S.foeIx].name);
+  log("win", "击败 " + FOES[S.foeIx].name);
   paintStatus();
 }
 
@@ -561,6 +568,14 @@ function paintStatus() {
   $("pstatus").innerHTML = p.length ? p.join("") : '<span class="none">无状态</span>';
 }
 
+function previewOf(i) {
+  const m = MOVES[i];
+  let lo = m.dmg[0], hi = m.dmg[1];
+  if (S.foeGuard) { lo = Math.round(lo * 0.6); hi = Math.round(hi * 0.6); }
+  const critHi = Math.round(hi * 1.35);
+  return { lo, hi, critHi, kill: lo >= S.fhp, chance: critHi >= S.fhp };
+}
+
 const btns = [...document.querySelectorAll(".mv")];
 function paintButtons() {
   const I = S.intent;
@@ -572,6 +587,11 @@ function paintButtons() {
     b.classList.toggle("busy", S.phase !== "ready" || cool);
     b.querySelector("u").style.width = cool ? "100%" : "0";
     if (i === 1) b.classList.toggle("hint-break", canBreak && !cool);
+    const pv = previewOf(i);
+    const dmgEl = b.querySelector("s");
+    if (dmgEl) dmgEl.textContent = pv.lo + "-" + pv.hi;
+    b.classList.toggle("lethal", pv.kill && S.phase === "ready");
+    b.classList.toggle("chance", !pv.kill && pv.chance && S.phase === "ready");
   });
   paintFin();
 }
@@ -582,10 +602,24 @@ function paintFin() {
   b.classList.toggle("busy", S.phase !== "ready" || !armed);
   b.querySelector("u").style.width = clamp01(S.energy / MAX_ENERGY) * 100 + "%";
   $("finTip").textContent = armed ? "就绪 · 按 5 释放" : "能量 " + Math.round(S.energy) + " / " + MAX_ENERGY;
+  const pool = FOES[S.foeIx].pool.map((k) => FINISHERS[k]);
+  const flo = Math.round(Math.min(...pool.map((f) => f.dmg[0])) * 1.35);
+  const fhi = Math.round(Math.max(...pool.map((f) => f.dmg[1])) * 1.35);
+  const fd = $("finDmg");
+  if (fd) fd.textContent = flo + "-" + fhi;
+  b.classList.toggle("lethal", armed && flo >= S.fhp && S.phase === "ready");
 }
 
 const hintEl = $("hint");
-function hint(s) { hintEl.textContent = s; }
+function hint(s) { hintEl.textContent = "R" + S.round + " · " + s; }
+
+function log(kind, text) {
+  S.log.unshift({ kind, text, r: S.round });
+  if (S.log.length > 6) S.log.pop();
+  $("log").innerHTML = S.log
+    .map((e) => '<li class="' + e.kind + '"><span>R' + e.r + '</span><b>' + e.text + '</b></li>')
+    .join("");
+}
 
 const fl = $("flash");
 let flashT = 0;
@@ -610,6 +644,6 @@ hint(intentHint(S.intent));
 requestAnimationFrame(tick);
 
 window.__game = {
-  S, chooseMove, MOVES, FINISHERS, addEnergy, startFinisher, paintButtons,
+  S, chooseMove, MOVES, FINISHERS, addEnergy, startFinisher, paintButtons, previewOf, log,
   get foe() { return FOES[S.foeIx]; },
 };

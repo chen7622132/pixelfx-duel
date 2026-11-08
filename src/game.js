@@ -64,13 +64,13 @@ const TORCHES = [
 // ---- 内容表 --------------------------------------------------------------
 const MOVES = [
   { mod: mSword,  name: "疾斩",   dmg: [8, 11],  hit: 0.06, power: 1, cd: 0,
-    follow: { dmg: [3, 4], t: 0.24 } },
+    kb: { x: 130, y: -330 }, follow: { dmg: [3, 4], t: 0.3, kb: { x: 90, y: -320 } } },
   { mod: mThrust, name: "突刺",   dmg: [10, 13], hit: 0.07, power: 2, cd: 1, break: true,
-    follow: { dmg: [4, 5], t: 0.26 } },
+    kb: { x: 250, y: -150 }, follow: { dmg: [4, 5], t: 0.36, kb: { x: 110, y: -300 } } },
   { mod: mHammer, name: "碎地锤", dmg: [22, 27], hit: 0.15, power: 3, cd: 2, stun: true,
-    follow: { dmg: [6, 7], t: 0.34 } },
+    kb: { x: 50, y: -520 }, follow: { dmg: [6, 7], t: 0.42, kb: { x: 80, y: -300 } } },
   { mod: mSpin,   name: "回旋斩", dmg: [9, 12],  hit: 0.17, power: 2, cd: 1, bleed: true,
-    follow: { dmg: [4, 5], t: 0.3 } },
+    kb: { x: 180, y: -420 }, follow: { dmg: [4, 5], t: 0.42, kb: { x: 110, y: -280 } } },
 ];
 
 const FINISHERS = {
@@ -218,6 +218,49 @@ function impact(power, on = "foe") {
   sfx(power);
 }
 let pPos = PX, ePos = EX;
+// —— 物理（火柴人式动量：被打飞 / 撞墙反弹 / 落地弹跳） ——
+const GRAV = 1250;
+const F = { x: EX, y: 0, vx: 0, vy: 0, air: false };
+let pY = 0;          // 玩家离地高度（追击时跳起来）
+let wallHits = 0, floorHits = 0;   // 自检用
+
+function physics(dt) {
+  if (["cineIn", "cine", "cineOut"].includes(S.phase)) return;
+  // 静止时慢慢走回原位（像打完一套走回来）
+  if (!F.air && F.vx === 0 && F.vy === 0) {
+    if (Math.abs(F.x - EX) > 0.5) F.x += (EX - F.x) * (1 - Math.exp(-dt * 2.0));
+    return;
+  }
+  F.vy += GRAV * dt;
+  F.y += F.vy * dt;
+  F.x += F.vx * dt;
+  // 撞墙反弹
+  if (F.x < 64) { F.x = 64; if (F.vx < 0) { F.vx = -F.vx * 0.55; smash("left"); } }
+  if (F.x > 266) { F.x = 266; if (F.vx > 0) { F.vx = -F.vx * 0.55; smash("right"); } }
+  // 落地弹跳
+  if (F.y >= 0) {
+    F.y = 0;
+    if (F.vy > 240) { F.vy = -F.vy * 0.4; F.vx *= 0.7; thud(); }
+    else {
+      F.vy = 0; F.vx *= Math.pow(0.02, dt);
+      if (Math.abs(F.vx) < 26) { F.vx = 0; F.air = false; }
+    }
+  } else F.air = true;
+}
+function smash(side) {
+  wallHits++;
+  shake = Math.max(shake, 4); zoom = Math.max(zoom, 0.045);
+  const x = side === "left" ? 72 : 256;
+  addRing(x, GROUND - 44, 3);
+  addFx(iBlunt, { x, y: GROUND - 44, seed: ri(1, 900) });
+  sfx(3);
+}
+function thud() {
+  floorHits++;
+  shake = Math.max(shake, 2.4);
+  addRing(F.x, GROUND - 6, 2);
+  sfx(2);
+}
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const ri = (a, b) => Math.round(rnd(a, b));
@@ -305,6 +348,8 @@ function spawnFoe() {
   const f = curFoe();
   S.fmaxhp = f.hp; S.fhp = f.hp;
   S.bleed = 0; S.stun = false; S.foeGuard = false;
+  F.x = EX; F.y = 0; F.vx = 0; F.vy = 0; F.air = false;
+  pY = 0; S.dashTo = PX;
   foeFx = createFx(f.mod, { x: EX, y: GROUND + f.oy, seed: ri(1, 900) });
   foeDotFx = null; alertFx = null;
   $("ename").textContent = f.name;
@@ -326,6 +371,7 @@ function chooseMove(i) {
   S.phase = "player"; S.t = 0; S.hit = false; S.moveIx = i;
   S.cd = S.cd.map((c) => Math.max(0, c - 1));
   S.cd[i] = m.cd;
+  S.dashTo = Math.max(36, Math.min(200, F.x - 56));
   atkFx = createFx(m.mod, { x: pPos, y: GROUND, seed: ri(1, 900) });
   hint(m.name);
   paintButtons();
@@ -352,6 +398,7 @@ function resolveHit() {
   addFx(crit ? iCrit : iBlunt, { x: ePos - 20, y: GROUND - 26, seed: ri(1, 900) });
   addFx(iFlash, { x: ePos, y: GROUND - 26, seed: ri(1, 900) });
   if (crit) addFx(iFrame, { x: ePos, y: GROUND - 34, seed: ri(1, 900) });
+  F.vx += m.kb.x; F.vy += m.kb.y; F.air = true;
   if (m.follow) followT = m.follow.t;
   if (m.stun) { S.stun = true; addFx(sStun, { x: ePos, y: GROUND - 62, seed: 3 }); }
   if (m.bleed && !S.bleed) { S.bleed = 3; setFoeDot("bleed"); }
@@ -363,6 +410,9 @@ function resolveHit() {
 function doFollow() {
   const m = MOVES[S.moveIx];
   if (!m.follow) return;
+  S.dashTo = Math.max(36, Math.min(200, F.x - 56));
+  const kb = m.follow.kb || { x: 60, y: -200 };
+  F.vx += kb.x; F.vy += kb.y; F.air = true;
   const dmg = ri(m.follow.dmg[0], m.follow.dmg[1]);
   S.fhp = Math.max(0, S.fhp - dmg);
   foeHit = 0.16;
@@ -556,8 +606,14 @@ function step(dt) {
   // 顿帧：完全静止，连特效一起停 —— 这是打击感的"咬合"
   if (hitstop > 0) { hitstop -= dt; return; }
   const cineLike = ["cineIn", "cine", "cineOut"].includes(S.phase);
-  pPos += ((cineLike ? S.cinePX : PX) - pPos) * (1 - Math.exp(-dt * 9));
-  ePos += ((cineLike ? S.cineEX : EX) - ePos) * (1 - Math.exp(-dt * 9));
+  physics(dt);
+  if (cineLike) {
+    ePos += (S.cineEX - ePos) * (1 - Math.exp(-dt * 9));
+  } else ePos = F.x;
+  const pTarget = cineLike ? S.cinePX : (S.phase === "player" || S.phase === "pause") ? (S.dashTo ?? PX) : PX;
+  pPos += (pTarget - pPos) * (1 - Math.exp(-dt * 16));
+  const pYTarget = (S.phase === "player" || S.phase === "pause") ? Math.max(-52, Math.min(0, F.y)) : 0;
+  pY += (pYTarget - pY) * (1 - Math.exp(-dt * 11));
   const lbT = (S.phase === "cineIn" || S.phase === "cine") ? 16 : 0;
   lb += (lbT - lb) * (1 - Math.exp(-dt * 13));
 
@@ -632,20 +688,42 @@ function draw() {
   const lunge = S.phase === "enemy" ? Math.sin(Math.min(1, S.t / 0.9) * Math.PI) * 42 : 0;
   const jitter = foeHit > 0 ? rnd(-1.5, 1.5) : 0;
   if (foeFx) {
-    foeFx.options.x = ePos - lunge + jitter + foeKb;
-    foeFx.options.y = GROUND + curFoe().oy + foeSink;
+    foeFx.options.x = ePos - lunge + jitter;
+    foeFx.options.y = GROUND + curFoe().oy + F.y + foeSink;
   }
   if (foeDotFx) foeDotFx.options.x = ePos;
   if (alertFx) alertFx.options.x = ePos;
 
   for (const t of TORCHES) t.draw(frame, "back");
+  // 被打飞时的速度线（火柴人式的"嗖"）
+  if (F.air && (Math.abs(F.vy) > 110 || Math.abs(F.vx) > 70)) {
+    const sp = Math.hypot(F.vx, F.vy) || 1;
+    const ux = -F.vx / sp, uy = -F.vy / sp;
+    const len = Math.min(64, sp * 0.11);
+    const vp = painterFor(frame);
+    vp.place(0, 0);
+    const cy = GROUND + curFoe().oy + F.y;
+    for (let i = 0; i < 8; i++) {
+      const ox = rnd(-30, 30), oy = rnd(-44, 4);
+      vp.line(ePos + ox, cy + oy, ePos + ox + ux * len, cy + oy + uy * len, hex("#ffffff"), 0.72);
+    }
+  }
   if (foeFx) foeFx.draw(frame, "back");
   if (atkFx) atkFx.draw(frame, "back");
 
   const lean = S.phase === "player" ? Math.sin(Math.min(1, S.t / 0.9) * Math.PI) * 7 : 0;
   if (atkFx) atkFx.options.x = pPos;
+  const dashing = Math.abs((S.dashTo ?? PX) - pPos) > 5;
+  if (dashing) {
+    const dir = Math.sign((S.dashTo ?? PX) - pPos) || 1;
+    for (let i = 3; i >= 1; i--) {
+      const gp = painterFor(frame);
+      gp.place(pPos - dir * i * 7, GROUND + pY);
+      drawActor(gp, ACTOR, 0.2);
+    }
+  }
   const p = painterFor(frame);
-  p.place(pPos + lean + pKb + (playerHit > 0 ? rnd(-1.5, 1.5) : 0), GROUND);
+  p.place(pPos + lean + pKb + (playerHit > 0 ? rnd(-1.5, 1.5) : 0), GROUND + pY);
   drawActor(p, ACTOR, 1);
 
   if (atkFx) atkFx.draw(frame, "front");
@@ -815,6 +893,7 @@ requestAnimationFrame(tick);
 
 window.__game = {
   S, chooseMove, MOVES, FINISHERS, addEnergy, startFinisher, paintButtons, previewOf, log,
-  dbg: () => ({ hitstop, zoom, foeKb, pKb, foeSink, followT, rings: rings.length, flashN, whiteN, audio: !!AC && AC.state }),
+  dbg: () => ({ hitstop, zoom, foeSink, followT, rings: rings.length, flashN, whiteN, wallHits, floorHits, audio: !!AC && AC.state,
+    phys: { x: +F.x.toFixed(1), y: +F.y.toFixed(1), vx: Math.round(F.vx), vy: Math.round(F.vy), air: F.air }, pY: +pY.toFixed(1) }),
   get foe() { return curFoe(); },
 };

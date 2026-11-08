@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#12111a">
+<title>像素对决 · pixelfx duel</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>像素对决</h1>
+    <p class="sub">pixelfx · 320×180 · 回合制</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="screen" width="1280" height="720"></canvas>
+    <div id="flash"></div>
+    <div id="overlay" class="hide"><div class="card"><h2 id="ovTitle"></h2><p id="ovText"></p><button id="ovBtn">再来一局</button></div></div>
+  </div>
+
+  <div class="bars">
+    <div class="bar you">
+      <span class="who">你</span>
+      <div class="track"><i id="php"></i></div>
+      <b id="pht">100</b>
+    </div>
+    <div class="bar foe">
+      <span class="who" id="ename">史莱姆</span>
+      <div class="track"><i id="ehp"></i></div>
+      <b id="eht">60</b>
+    </div>
+  </div>
+
+  <div class="moves" id="moves">
+    <button class="mv" data-i="0"><em>1</em><b>疾斩</b><i>快 · 稳</i><u></u></button>
+    <button class="mv" data-i="1"><em>2</em><b>突刺</b><i>远 · 破防</i><u></u></button>
+    <button class="mv" data-i="2"><em>3</em><b>碎地锤</b><i>慢 · 击晕</i><u></u></button>
+    <button class="mv" data-i="3"><em>4</em><b>回旋斩</b><i>范围 · 流血</i><u></u></button>
+  </div>
+
+  <p class="hint" id="hint">点按钮出招，或按键盘 1–4</p>
+</div>
+<script type="module" src="src/game.js"></script>
+</body>
+</html>

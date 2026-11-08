@@ -266,6 +266,22 @@ function stepPt(dt) {
   }
   if (PT.length > 220) PT.splice(0, PT.length - 220);
 }
+// 火柴人式动作曲线：慢预备(后压) → 极快出击 → 命中 → 收势回摆
+function lungeCurve(t, hit) {
+  const pre = hit * 0.55;
+  if (t < pre) {
+    const k = t / pre;
+    return -15 * (1 - Math.pow(1 - k, 2));
+  }
+  if (t < hit) {
+    const k = (t - pre) / Math.max(0.001, hit - pre);
+    return -15 + 43 * (1 - Math.pow(1 - k, 4));
+  }
+  const k = Math.min(1, (t - hit) / 0.32);
+  return 28 * (1 - k * k);
+}
+const camFocus = { x: 160, y: 96 };
+
 function burst(x, y, power, dir) {
   const n = 4 + power * 3;
   for (let i = 0; i < n; i++) {
@@ -528,12 +544,23 @@ function clearSlot(i) {
 function chainOf(prev, cur) { return !!(prev && cur && (CHAIN[prev] || []).includes(cur)); }
 function buildExec() {
   if (S.phase !== "plan") return;
+  // 动作块：我方连打 2 招 → 敌群扑上来（最多 2 只并行）→ 再连打
+  const mine = S.slots.filter(Boolean);
   const list = [];
-  const n = Math.max(S.slots.filter(Boolean).length, S.intents.length);
-  for (let i = 0; i < n; i++) {
-    const sid = S.slots[i];
-    if (sid) list.push({ side: "me", id: sid, chain: chainOf(S.slots[i - 1], sid) });
-    if (S.intents[i]) list.push({ side: "foe", ix: i });
+  let mi = 0, fi = 0;
+  while (mi < mine.length || fi < S.intents.length) {
+    for (let k = 0; k < 2 && mi < mine.length; k++, mi++) {
+      list.push({ side: "me", id: mine[mi], chain: chainOf(mine[mi - 1], mine[mi]) });
+    }
+    if (fi < S.intents.length) {
+      const grp = [];
+      for (let t = 0; t < 2 && fi < S.intents.length; t++, fi++) grp.push(fi);
+      list.push({ side: "foe", group: grp });
+    }
+  }
+  // 连段紧接：连续两个我方动作之间不留停顿
+  for (let i = 0; i < list.length - 1; i++) {
+    if (list[i].side === "me" && list[i + 1].side === "me") list[i].quick = true;
   }
   if (!list.length) { hint("先排至少一个技能"); return; }
   const empty = S.slots.filter((x) => !x).length;
@@ -622,23 +649,29 @@ function startAction(a) {
   if (a.side === "me") {
     const m = SKILL_POOL[a.id];
     const f = tgt();
-    S.dashTo = Math.max(30, Math.min(150, f.F.x - 62));
+    S.dashTo = Math.max(30, Math.min(160, f.F.x - 92));
     atkFx = createFx(m.mod, { x: pPos, y: GROUND, seed: ri(1, 900) });
-    a.hitAt = m.hit;
-    a.dur = Math.min(1.15, m.hit + 0.6);
+    a.hitAt = Math.max(0.26, m.hit + 0.2);
+    a.dur = a.hitAt + (a.quick ? 0.2 : 0.3);
   } else {
-    const it = S.intents[a.ix];
-    a.foe = it ? it.foe : null;
-    a.hitAt = 0.22;
-    a.dur = 0.72;
-    if (a.foe) S.dashTo = PX;
+    a.foes = (a.group || []).map((ix) => {
+      const it = S.intents[ix];
+      return it && it.foe && it.foe.alive ? { foe: it.foe, it } : null;
+    }).filter(Boolean);
+    a.hitAt = 0.3;
+    a.dur = 0.6;
+    if (a.foes.length) S.dashTo = PX;
   }
 }
 function doAction(a) {
   if (a.side === "me") { meHit(a.id, a.chain); atkFx = null; }
-  else if (a.foe && a.foe.alive) {
-    const it = S.intents[a.ix];
-    foeHit(a.foe, { type: it.type, dmg: it.dmg });
+  else {
+    // 敌群同时扑上来，同一帧结算
+    const many = (a.foes || []).length > 1;
+    for (const g of a.foes || []) {
+      // 围攻时每只只发挥 85%（互相挡位），视觉混战但不至于瞬间秒人
+      if (g.foe.alive) foeHit(g.foe, { type: g.it.type, dmg: many ? Math.max(1, Math.round(g.it.dmg * 0.85)) : g.it.dmg });
+    }
   }
 }
 
@@ -983,6 +1016,13 @@ function step(dt) {
   if (Math.abs(pKb) > 0.2) pKb *= Math.exp(-dt * 11); else pKb = 0;
   if (playerHit > 0) playerHit = Math.max(0, playerHit - dt);
   if (S.comboT > 0) { S.comboT -= dt; if (S.comboT <= 0) S.combo = 0; }
+  {
+    const cf = tgt();
+    const tx = Math.max(80, Math.min(240, (pPos + (cf ? cf.F.x : PX + 90)) / 2));
+    const ty = Math.max(52, Math.min(138, GROUND - 46 + (cf ? cf.F.y * 0.3 : 0)));
+    camFocus.x += (tx - camFocus.x) * (1 - Math.exp(-dt * 5.5));
+    camFocus.y += (ty - camFocus.y) * (1 - Math.exp(-dt * 5.5));
+  }
   if (Math.random() < 0.3 && embers.length < 26) {
     embers.push({ x: rnd(0, W), y: rnd(H * 0.4, H), vx: rnd(-8, 8), vy: rnd(-26, -12), life: rnd(1.1, 2.4), t: 0 });
   }
@@ -1038,8 +1078,9 @@ function step(dt) {
 // ---- 绘制 ----------------------------------------------------------------
 function draw() {
   const curA = S.exec ? S.exec.list[S.exec.ix] : null;
-  const lungeOf = (f) => (S.phase === "exec" && curA && curA.side === "foe" && curA.foe === f)
-    ? Math.sin(Math.min(1, S.exec.t / 0.72) * Math.PI) * 40 : 0;
+  const lungeOf = (f) => (S.phase === "exec" && curA && curA.side === "foe"
+    && curA.foes && curA.foes.some((g) => g.foe === f))
+    ? Math.sin(Math.min(1, S.exec.t / Math.max(0.24, (curA.hitAt || 0.3) * 1.6)) * Math.PI) * 46 : 0;
   clearFrame(frame);
   frame.color.set(BGS[Math.min(S.stage, BGS.length - 1)] || BGS[0]);
   for (const a of ambFx) a.draw(frame, "back");
@@ -1077,10 +1118,31 @@ function draw() {
   }
   if (atkFx) atkFx.draw(frame, "back");
 
-  const lean = S.phase === "exec" && curA && curA.side === "me" ? Math.sin(Math.min(1, S.exec.t / 0.8) * Math.PI) * 7 : 0;
+  const isMe = S.phase === "exec" && curA && curA.side === "me";
+  const myT = isMe ? S.exec.t : 0;
+  const myHit = isMe ? (curA.hitAt || 0.3) : 0.3;
+  const lungeP = isMe ? lungeCurve(myT, myHit) : 0;
+  // 预备后倾 → 命中前扑
+  const lean = isMe
+    ? (myT < myHit
+        ? -3 * Math.sin(Math.min(1, myT / (myHit * 0.55)) * Math.PI / 2)
+        : Math.sin(Math.min(1, (myT - myHit) / 0.3) * Math.PI) * 10)
+    : 0;
+  // 预备阶段：力量向内收拢的蓄力环
+  if (isMe && myT > 0.02 && myT < myHit) {
+    const k = myT / myHit;
+    const sp = painterFor(frame); sp.place(0, 0);
+    const r = 17 - 11 * k;
+    sp.ring(pPos + 20, GROUND - 34, r, 1, hex("#ffd18a"), 0.35 + k * 0.5);
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + k * 3.2;
+      sp.rect(Math.round(pPos + 20 + Math.cos(a) * (r + 7)), Math.round(GROUND - 34 + Math.sin(a) * (r + 7)),
+        1, 1, hex("#ffe9b0"), 0.85);
+    }
+  }
   if (atkFx) atkFx.options.x = pPos;
   const pT = (S.dashTo ?? PX);
-  const dashing = S.phase === "exec" && Math.abs(pT - pPos) > 5;
+  const dashing = S.phase === "exec" && ((isMe && lungeP > 10) || Math.abs(pT - pPos) > 5);
   if (dashing) {
     const dir = Math.sign(pT - pPos) || 1;
     for (let i = 2; i >= 1; i--) {
@@ -1090,7 +1152,7 @@ function draw() {
     }
   }
   const p = painterFor(frame);
-  p.place(pPos + lean + pKb + (playerHit > 0 ? rnd(-1.5, 1.5) : 0), GROUND + pY);
+  p.place(pPos + lungeP + lean + pKb + (playerHit > 0 ? rnd(-1.5, 1.5) : 0), GROUND + pY);
   drawActor(p, ACTOR, 1);
 
   if (atkFx) atkFx.draw(frame, "front");
@@ -1185,7 +1247,9 @@ function draw() {
   ctx.fillRect(0, 0, W * SCALE, H * SCALE);
   const dw = Math.round(W * SCALE * (1 + zoom));
   const dh = Math.round(H * SCALE * (1 + zoom));
-  ctx.drawImage(off, sx * SCALE - (dw - W * SCALE) / 2, sy * SCALE - (dh - H * SCALE) / 2, dw, dh);
+  const kx = dw / (W * SCALE) - 1, ky = dh / (H * SCALE) - 1;
+  ctx.drawImage(off, sx * SCALE - camFocus.x * SCALE * kx,
+    sy * SCALE - camFocus.y * SCALE * ky, dw, dh);
 }
 
 function drawOverlays(vis) {
@@ -1394,7 +1458,9 @@ window.__game = {
   fillSlot, clearSlot, buildExec, rollIntents,
   dbg: () => ({
     hitstop, zoom, flashN, whiteN, wallHits, floorHits, audio: !!AC && AC.state,
-    pt: PT.length, shake, stance: S.stance,
+    pt: PT.length, shake, stance: S.stance, px: +pPos.toFixed(1),
+    cam: [+camFocus.x.toFixed(1), +camFocus.y.toFixed(1)],
+    acts: S.exec ? S.exec.list.map((a) => a.side[0] + (a.foes ? a.foes.length : 1)) : [],
     phase: S.phase, stage: S.stage, wave: S.wave, round: S.round, kills: S.kills,
     hp: S.hp, maxhp: S.maxhp, shield: S.shield, skills: S.skills.slice(), mods: { ...S.mods },
     target: S.target, actor: S.actor, upChoices: S.upChoices && S.upChoices.map((u) => u.id),

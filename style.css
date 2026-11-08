@@ -103,8 +103,9 @@ canvas{width:100%;height:auto;display:block;image-rendering:pixelated;image-rend
 @media (max-width:430px){
   h1{font-size:16px}
   .moves{grid-template-columns:repeat(2,1fr)}
-  .mv b{font-size:13px}
-  .mv.fin{grid-column:span 2}
+  .mv.fin{grid-column:1/-1}
+  .mv b{font-size:12px}
+  .mv s{font-size:10px;right:5px;top:7px}
 }
 
 /* 终结技按钮：独占一行，能量满时亮 */
@@ -131,3 +132,25 @@ canvas{width:100%;height:auto;display:block;image-rendering:pixelated;image-rend
 /* 白闪（终结技命中） */
 #flash.micro{background:radial-gradient(circle at 55% 58%,rgba(255,255,255,.42),rgba(255,255,255,0) 60%)}
 #flash.white{background:radial-gradient(circle at 55% 55%,rgba(255,255,255,.92),rgba(255,240,210,.55) 40%,rgba(255,255,255,0) 72%)}
+
+/* 层/波进度 */
+.progress{display:flex;align-items:center;gap:8px;margin:2px 0 8px;font-size:11px;color:#8f89a8}
+.progress b{color:#ffcf9a;font-weight:600;letter-spacing:.04em}
+.progress .pips{display:flex;gap:3px}
+.progress .pip{width:14px;height:4px;background:#2b2639}
+.progress .pip.on{background:#ff8a2a}
+.progress .pip.boss{background:#8f2b31}
+
+/* 三选一强化 */
+#upgrade{position:absolute;inset:0;display:grid;place-items:center;background:rgba(10,9,16,.9);z-index:6;line-height:1.4}
+#upgrade.hide{display:none}
+.upwrap{width:90%;max-width:330px}
+.upwrap h2{margin:0 0 2px;font-size:15px;letter-spacing:.08em}
+.upwrap p{margin:0 0 9px;font-size:10px;color:#8f89a8}
+#upList{display:grid;gap:6px}
+.up{text-align:left;padding:8px 10px;border:1px solid var(--line);background:var(--ink2);
+  color:#e8e6f0;font:inherit;cursor:pointer;transition:border-color .12s}
+.up:hover,.up:active{border-color:var(--hot)}
+.up b{display:block;font-size:13px;color:#ffcf9a}
+.up i{display:block;font-style:normal;font-size:10px;color:#8f89a8;margin-top:2px}
+.up.new b{color:#8ce0a0}

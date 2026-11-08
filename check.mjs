@@ -30,15 +30,16 @@ await page.screenshot({ path: "shots/round.png" });
 
 // 连续自动出招 40 秒，验证多回合 / 敌人切换 / 无崩溃
 const t0 = Date.now();
-while (Date.now() - t0 < 75000) {
+while (Date.now() - t0 < 110000) {
   await page.evaluate(() => {
     const g = window.__game;
     if (g.S.phase !== "ready") return;
+    if (g.S.energy >= 100) { g.chooseMove(4); return; }
     for (let i = 0; i < 4; i++) if (g.S.cd[i] === 0) { g.chooseMove(i); return; }
   });
   await page.waitForTimeout(320);
 }
-r.after75s = await page.evaluate(() => ({
+r.after110s = await page.evaluate(() => ({
   foe: (window.__game.foe || {}).name ?? "-", fhp: window.__game.S.fhp, php: window.__game.S.hp,
   phase: window.__game.S.phase, kills: window.__game.S.kills,
 }));

@@ -17,6 +17,7 @@
   <div class="stage">
     <canvas id="screen" width="1280" height="720"></canvas>
     <div id="flash"></div>
+    <div id="cine" class="cine"><b id="cineName"></b><i id="cineSub"></i></div>
     <div id="overlay" class="hide"><div class="card"><h2 id="ovTitle"></h2><p id="ovText"></p><button id="ovBtn">再来一局</button></div></div>
   </div>
 
@@ -24,12 +25,12 @@
     <div class="bar you">
       <span class="who">你</span>
       <div class="track"><i id="php"></i></div>
-      <b id="pht">100</b>
+      <b id="pht">120</b>
     </div>
     <div class="bar foe">
       <span class="who" id="ename">史莱姆</span>
       <div class="track"><i id="ehp"></i></div>
-      <b id="eht">60</b>
+      <b id="eht">52</b>
     </div>
   </div>
 
@@ -38,9 +39,10 @@
     <button class="mv" data-i="1"><em>2</em><b>突刺</b><i>远 · 破防</i><u></u></button>
     <button class="mv" data-i="2"><em>3</em><b>碎地锤</b><i>慢 · 击晕</i><u></u></button>
     <button class="mv" data-i="3"><em>4</em><b>回旋斩</b><i>范围 · 流血</i><u></u></button>
+    <button class="mv fin" data-i="4"><em>5</em><b>终结技</b><i id="finTip">能量 0 / 100</i><u></u></button>
   </div>
 
-  <p class="hint" id="hint">点按钮出招，或按键盘 1–4</p>
+  <p class="hint" id="hint">点按钮出招，或按键盘 1–5</p>
 </div>
 <script type="module" src="src/game.js"></script>
 </body>

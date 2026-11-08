@@ -60,4 +60,29 @@ canvas{width:100%;height:auto;display:block;image-rendering:pixelated;image-rend
   h1{font-size:16px}
   .moves{grid-template-columns:repeat(2,1fr)}
   .mv b{font-size:13px}
+  .mv.fin{grid-column:span 2}
 }
+
+/* 终结技按钮：独占一行，能量满时亮 */
+.mv.fin{grid-column:1/-1;border-color:#3a3348}
+.mv.fin em{background:#6d6585}
+.mv.fin b{color:#cfc7e6}
+.mv.fin u{width:0;background:#4a3f66;height:3px;transition:width .25s ease-out}
+.mv.fin.armed{border-color:var(--hot);background:#2a1a10}
+.mv.fin.armed em{background:var(--hot);color:#1a0d05}
+.mv.fin.armed b{color:#ffcf9a}
+.mv.fin.armed u{background:linear-gradient(90deg,#ff8a2a,#ffd18a);height:3px}
+.mv.fin.armed:not(.busy){animation:finPulse 1.4s ease-in-out infinite}
+@keyframes finPulse{0%,100%{box-shadow:0 0 0 rgba(255,138,42,0)}50%{box-shadow:0 0 18px rgba(255,138,42,.45)}}
+
+/* 终结技大标题 */
+.cine{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:6px;
+  pointer-events:none;opacity:0;transform:scale(.94);transition:opacity .22s ease-out,transform .22s ease-out;line-height:1.15;
+  background:radial-gradient(ellipse at 50% 56%,rgba(0,0,0,0) 26%,rgba(0,0,0,.58) 100%)}
+.cine.on{opacity:1;transform:scale(1)}
+.cine b{font-size:clamp(20px,6vw,30px);letter-spacing:.18em;color:#fff;
+  text-shadow:0 0 20px rgba(255,150,60,.85),2px 2px 0 #000,0 0 3px #000}
+.cine i{font-style:normal;font-size:10px;letter-spacing:.32em;color:#ffb96a;text-transform:uppercase}
+
+/* 白闪（终结技命中） */
+#flash.white{background:radial-gradient(circle at 55% 55%,rgba(255,255,255,.92),rgba(255,240,210,.55) 40%,rgba(255,255,255,0) 72%)}

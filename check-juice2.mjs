@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 
-const FILE = 'file:///sandbox/workspace/pixelfx-duel/pixelfx-duel-standalone.html';
+const FILE = process.argv[2] || 'file:///sandbox/workspace/pixelfx-duel/pixelfx-duel-standalone.html';
 const errs = [];
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
@@ -8,7 +8,7 @@ const page = await ctx.newPage();
 page.on('console', m => { if (m.type() === 'error') errs.push('[console] ' + m.text()); });
 page.on('pageerror', e => errs.push('[pageerror] ' + e.message));
 
-await page.goto(FILE, { waitUntil: 'domcontentloaded', timeout: 60000 });
+await page.goto(FILE, { waitUntil: 'domcontentloaded', timeout: 120000 });
 await page.waitForTimeout(1600);
 
 const D = () => page.evaluate(() => window.__game.dbg());

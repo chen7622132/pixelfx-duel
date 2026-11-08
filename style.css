@@ -154,3 +154,16 @@ canvas{width:100%;height:auto;display:block;image-rendering:pixelated;image-rend
 .up b{display:block;font-size:13px;color:#ffcf9a}
 .up i{display:block;font-style:normal;font-size:10px;color:#8f89a8;margin-top:2px}
 .up.new b{color:#8ce0a0}
+
+/* 层间路线选择 */
+#route{position:absolute;inset:0;display:grid;place-items:center;background:rgba(10,9,16,.92);z-index:7;line-height:1.4}
+#route.hide{display:none}
+.gates{display:grid;gap:7px}
+.gate{text-align:left;padding:10px 11px;border:1px solid var(--line);background:var(--ink2);
+  color:#e8e6f0;font:inherit;cursor:pointer;transition:border-color .12s,transform .08s}
+.gate:hover,.gate:active{border-color:var(--hot);transform:translateY(-1px)}
+.gate b{display:block;font-size:14px;color:#ffcf9a}
+.gate i{display:block;font-style:normal;font-size:10px;color:#8f89a8;margin-top:3px;line-height:1.5}
+.gate .cost{color:#c98b6c}
+.gate.risk b{color:#ff8a8a}
+.gate.rest b{color:#8ce0a0}

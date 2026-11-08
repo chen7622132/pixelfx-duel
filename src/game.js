@@ -151,11 +151,12 @@ const S = {
   poison: 0, target: 0, actor: 0, energy: 0, round: 1, kills: 0,
   fin: null, cinePX: PX, cineEX: CINE_LINE, slow: 0, breakFx: 0, dashTo: PX,
   usedFins: new Set(), log: [],
+  combo: 0, comboT: 0, pendingClear: false, pendingUp: 0, route: null, eliteWave: false, extraUp: 0,
   upChoices: null,
 };
 const foes = [];
 let atkFx = null, transFx = null;
-const floats = [], rings = [];
+const floats = [], rings = [], embers = [];
 let shake = 0, zoom = 0, lb = 0, hitstop = 0;
 let pPos = PX, pY = 0, pKb = 0, playerHit = 0, followT = 0;
 let flashN = 0, whiteN = 0, wallHits = 0, floorHits = 0;
@@ -361,6 +362,14 @@ function chooseMove(i) {
   paintButtons();
 }
 function dmgOf(base) { return Math.max(1, Math.round(base * S.mods.dmg)); }
+function comboMul() { return 1 + Math.min(S.combo, 10) * 0.03; }
+function bumpCombo() {
+  S.combo += 1; S.comboT = 4;
+  if (S.combo === 3 || S.combo === 6 || S.combo === 10) {
+    addRing(pPos + 20, GROUND - 40, 3);
+    sfx(2);
+  }
+}
 function hitFoe(f, dmg, power, opts = {}) {
   f.hp = Math.max(0, f.hp - dmg);
   f.hitT = 0.24;
@@ -377,7 +386,7 @@ function hitFoe(f, dmg, power, opts = {}) {
 function resolveHit() {
   const m = curSkill(S.moveIx);
   const f = tgt();
-  let dmg = dmgOf(ri(m.dmg[0], m.dmg[1]));
+  let dmg = Math.round(dmgOf(ri(m.dmg[0], m.dmg[1])) * comboMul());
   let crit = Math.random() < S.mods.crit || (m.stun && Math.random() < 0.3);
   let broke = false, guarded = false;
   if (m.break && f.intent && f.intent.type === "heavy") {
@@ -389,6 +398,7 @@ function resolveHit() {
   if (crit) dmg = Math.round(dmg * 1.35);
   if (f.guard) { dmg = Math.round(dmg * 0.6); f.guard = false; guarded = true; }
   addEnergy(12);
+  bumpCombo();
   hint(broke ? "识破！打断蓄力" : guarded ? "被护盾吸收" : crit ? "暴击" : "命中");
 
   if (m.area) {
@@ -429,7 +439,7 @@ function doFollow() {
   const f = tgt();
   if (!f.alive) return;
   S.dashTo = Math.max(30, Math.min(150, f.F.x - 62));
-  const dmg = dmgOf(ri(m.follow.dmg[0], m.follow.dmg[1]));
+  const dmg = Math.round(dmgOf(ri(m.follow.dmg[0], m.follow.dmg[1])) * comboMul());
   hitFoe(f, dmg, 1, { kb: m.follow.kb });
   hint("追打 " + dmg);
   if (f.hp > 0) log("hit", "追击 · " + dmg);
@@ -439,23 +449,29 @@ function killFoe(f) {
   f.alive = false; f.deathT = 1.1; f.intent = null;
   S.kills += 1;
   addEnergy(10);
+  S.slow = Math.max(S.slow, 0.26);   // 击杀慢镜
   if (S.mods.healOnKill) { S.hp = Math.min(S.maxhp, S.hp + S.mods.healOnKill); paintBars(); }
   addFx(spawnSoul, { x: f.F.x, y: GROUND + f.def.lift + f.F.y, seed: ri(1, 900) });
   log("win", "击杀 " + f.def.name);
   paintFoeBars();
   const rest = alive();
   if (!rest.length) {
-    S.phase = "clear"; S.t = 0;
-    transFx = createFx(tBurn, { x: W / 2, y: H / 2, seed: ri(1, 900) });
-    $("cineName").textContent = "清场";
-    $("cineSub").textContent = "WAVE " + (S.wave + 1) + "/3 · " + STAGES[S.stage].name;
-    $("cine").classList.add("on");
+    S.pendingClear = true;   // 只打标记，等当前演出播完再收场
     return;
   }
   if (f === foes[S.target]) S.target = foes.indexOf(rest[0]);
 }
 
 // ---- 回合 ----------------------------------------------------------------
+function beginClear() {
+  S.pendingClear = false;
+  S.phase = "clear"; S.t = 0;
+  transFx = createFx(tBurn, { x: W / 2, y: H / 2, seed: ri(1, 900) });
+  $("cineName").textContent = "清场";
+  $("cineSub").textContent = "WAVE " + (S.wave + 1) + "/3 · " + STAGES[S.stage].name;
+  $("cine").classList.add("on");
+}
+
 function endTurn() {
   S.cd = S.cd.map((c) => Math.max(0, c - 1));
   if (!alive().length) return;
@@ -517,6 +533,7 @@ function enemyStrike() {
     hint("护盾吸收 " + absorbed);
   }
   if (dmg > 0) S.hp = Math.max(0, S.hp - dmg);
+  if (dmg > 0) S.combo = 0;   // 挨打断连击
   addEnergy(6);
   const heavy = I.type === "heavy";
   playerHit = 0.26;
@@ -602,7 +619,7 @@ function offerUpgrade() {
   $("upSub").textContent = "选一个，进入下一波";
   $("upgrade").classList.remove("hide");
 }
-function applyUpgrade(id) {
+function applyUpgrade(id, silent) {
   const M = S.mods;
   if (id === "skill") {
     const left = LOCKED_SKILLS.filter((k) => !S.skills.includes(k));
@@ -626,21 +643,80 @@ function applyUpgrade(id) {
   $("upgrade").classList.add("hide");
   renderSkills();
   paintBars();
+  if (silent) return;
+  if (S.extraUp > 0) { S.extraUp -= 1; return offerUpgrade(); }
   nextWave();
 }
-function nextWave() {
-  S.wave += 1;
-  if (S.wave >= WAVES) {
-    S.wave = 0; S.stage += 1;
-    if (S.stage >= STAGES.length) return gameOver(true);
-    S.hp = Math.min(S.maxhp, S.hp + 30);
-    log("sys", "进入 " + STAGES[S.stage].name);
-  }
+function startWave() {
   spawnWave();
+  if (S.eliteWave) {
+    for (const f of foes) { f.hp = Math.round(f.hp * 1.6); f.maxhp = f.hp; }
+    S.eliteWave = false;
+  }
   const f = pickActor();
   S.phase = "ready"; S.t = 0;
   paintBars(); paintButtons(); paintFin(); paintStatus(); paintProgress();
   hint((f ? intentHint(f) : "选一招") + "   [" + STAGES[S.stage].name + " " + (S.wave + 1) + "/3]");
+}
+
+function nextWave() {
+  S.wave += 1;
+  if (S.wave >= WAVES) { S.wave = WAVES - 1; return offerRoute(); }
+  startWave();
+}
+
+function enterNextStage() {
+  S.stage += 1;
+  if (S.stage >= STAGES.length) return gameOver(true);
+  S.wave = 0; S.round = 1;
+  S.hp = Math.min(S.maxhp, S.hp + 30);
+  log("sys", "进入 " + STAGES[S.stage].name);
+  startWave();
+}
+
+function offerRoute() {
+  S.phase = "route";
+  const gates = [
+    { id: "elite", cls: "risk", name: "精英战",
+      desc: "下一波敌人血量 ×1.6（更耐打）· 打完多给 1 次三选一", cost: "风险：这一波会很疼" },
+    { id: "rest", cls: "rest", name: "营火",
+      desc: "回复 45% 生命 · 能量直接充满", cost: "代价：没有额外强化" },
+    { id: "chest", cls: "", name: "宝箱",
+      desc: "立刻获得 1 个三选一强化 · 回复 15% 生命", cost: "代价：放弃精英的那 1 次额外强化" },
+  ];
+  S.route = gates;
+  $("routeTitle").textContent = STAGES[S.stage].name + " 已清 · 选择前路";
+  $("routeSub").innerHTML = "下一层：" + (STAGES[S.stage + 1] ? STAGES[S.stage + 1].name : "终点")
+    + '<br><b style="color:#8ce0a0">你：' + Math.max(0, S.hp) + "/" + S.maxhp + " HP"
+    + " · 能量 " + Math.round(S.energy) + "/100</b> · 已有 " + S.skills.length + " 个招式";
+  $("routeList").innerHTML = gates.map((g) =>
+    '<button class="gate ' + g.cls + '" data-r="' + g.id + '"><b>' + g.name + "</b><i>" + g.desc
+    + '<br><span class="cost">' + g.cost + "</span></i></button>").join("");
+  $("routeList").querySelectorAll(".gate").forEach((b) =>
+    b.addEventListener("click", () => pickRoute(b.dataset.r)));
+  $("route").classList.remove("hide");
+}
+
+function pickRoute(id) {
+  $("route").classList.add("hide");
+  S.route = null;
+  if (id === "rest") {
+    S.hp = Math.min(S.maxhp, S.hp + Math.round(S.maxhp * 0.45));
+    S.energy = MAX_ENERGY;
+    log("sys", "营火：回满状态");
+  } else if (id === "chest") {
+    S.hp = Math.min(S.maxhp, S.hp + Math.round(S.maxhp * 0.15));
+    const pool = UPGRADES.filter((u) => u.id !== "skill" && !S.taken.includes(u.id));
+    const u = pool.length ? pool[ri(0, pool.length - 1)] : UPGRADES[1];
+    applyUpgrade(u.id, true);
+    log("sys", "宝箱：" + u.name);
+  } else {
+    S.eliteWave = true;
+    S.extraUp = (S.extraUp || 0) + 1;
+    log("sys", "精英战：敌人强化");
+  }
+  paintBars();
+  enterNextStage();
 }
 
 // ---- 结算 ----------------------------------------------------------------
@@ -663,6 +739,8 @@ function restart() {
   S.skills = [...BASE_SKILLS]; S.cd = [0, 0, 0, 0, 0, 0];
   S.mods = { dmg: 1, energy: 1, crit: 0.12, regen: 0, kb: 1, fin: 1, healOnKill: 0, cd: 0, shield: 0, bleed: false };
   S.taken = []; S.stage = 0; S.wave = 0; S.log = [];
+  S.eliteWave = false; S.extraUp = 0; S.route = null; S.pendingClear = false;
+  $("route").classList.add("hide");
   floats.length = 0; rings.length = 0; atkFx = null; transFx = null;
   pPos = PX; pY = 0; pKb = 0;
   renderSkills();
@@ -716,6 +794,15 @@ function step(dt) {
   if (zoom > 0) zoom = Math.max(0, zoom - dt * 0.9);
   if (Math.abs(pKb) > 0.2) pKb *= Math.exp(-dt * 11); else pKb = 0;
   if (playerHit > 0) playerHit = Math.max(0, playerHit - dt);
+  if (S.comboT > 0) { S.comboT -= dt; if (S.comboT <= 0) S.combo = 0; }
+  if (Math.random() < 0.3 && embers.length < 26) {
+    embers.push({ x: rnd(0, W), y: rnd(H * 0.4, H), vx: rnd(-8, 8), vy: rnd(-26, -12), life: rnd(1.1, 2.4), t: 0 });
+  }
+  for (let i = embers.length - 1; i >= 0; i--) {
+    const e = embers[i];
+    e.t += dt; e.x += e.vx * dt; e.y += e.vy * dt; e.vx += rnd(-6, 6) * dt;
+    if (e.t >= e.life) embers.splice(i, 1);
+  }
   if (followT > 0) { followT -= dEff; if (followT <= 0 && S.phase === "player") doFollow(); }
 
   switch (S.phase) {
@@ -724,11 +811,11 @@ function step(dt) {
       if (atkFx && atkFx.done()) { atkFx = null; S.phase = "pause"; S.t = 0; }
       break;
     case "pause":
-      if (S.t >= 0.32) enemyTurn();
+      if (S.t >= 0.32) { if (S.pendingClear) return beginClear(); enemyTurn(); }
       break;
     case "enemy":
       if (!S.hit && S.t >= 0.18) { S.hit = true; enemyStrike(); }
-      if (S.t >= 0.92) endTurn();
+      if (S.t >= 0.92) { if (S.pendingClear) return beginClear(); endTurn(); }
       break;
     case "cineIn":
       if (S.t >= 0.5) { S.phase = "cine"; S.t = 0; $("cine").classList.add("on"); }
@@ -740,7 +827,8 @@ function step(dt) {
     case "cineOut":
       if (S.t >= 0.55) {
         S.fin = null;
-        if (!alive().length) return;
+        if (S.pendingClear) return beginClear();
+        if (S.phase === "clear") return;
         S.phase = "ready"; S.t = 0;
         hint(intentHint(foes[S.actor]));
         paintButtons(); paintFin();
@@ -762,6 +850,13 @@ function draw() {
   frame.color.set(BG);
   const vis = foes.filter((f) => f.alive || f.deathT > 0).sort((a, b) => a.F.x - b.F.x);
 
+  if (embers.length) {
+    const ep = painterFor(frame); ep.place(0, 0);
+    for (const e of embers) {
+      const k = 1 - e.t / e.life;
+      ep.dot(e.x, e.y, hex(k > 0.5 ? "#ffb060" : "#ff6a30"), 0.25 + k * 0.6);
+    }
+  }
   for (const t of TORCHES) t.draw(frame, "back");
 
   for (const f of vis) {
@@ -847,6 +942,14 @@ function draw() {
   if (transFx) transFx.draw(frame, "front");
 
   drawOverlays(vis);
+
+  if (S.combo >= 2) {
+    const cp = painterFor(frame); cp.place(0, 0);
+    const pulse = S.comboT > 3.6 ? 1 : 0;
+    drawText(cp, "x" + S.combo, 24, 14, hex(pulse ? "#ffffff" : "#ffe066"), "big", 2, "center");
+    drawText(cp, "COMBO", 24, 31, hex("#ffb060"), "mini", 1, "center");
+    if (S.combo >= 10) drawText(cp, "MAX", 24, 39, hex("#ff5a4a"), "mini", 1, "center");
+  }
 
   if (S.breakFx > 0) {
     const pp = painterFor(frame); pp.place(0, 0);
@@ -1044,7 +1147,7 @@ requestAnimationFrame(tick);
 
 window.__game = {
   S, foes, chooseMove, SKILL_POOL, FINISHERS, STAGES, UPGRADES, addEnergy, startFinisher,
-  paintButtons, previewOf, log, applyUpgrade, offerUpgrade, nextWave,
+  paintButtons, previewOf, log, applyUpgrade, offerUpgrade, nextWave, offerRoute, pickRoute,
   dbg: () => ({
     hitstop, zoom, flashN, whiteN, wallHits, floorHits, audio: !!AC && AC.state,
     phase: S.phase, stage: S.stage, wave: S.wave, round: S.round, kills: S.kills,

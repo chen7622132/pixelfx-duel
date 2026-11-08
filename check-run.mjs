@@ -1,13 +1,13 @@
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
-const URL = process.argv[2] ?? "http://127.0.0.1:8146/index.html";
+const URL = process.argv[2] ?? "http://127.0.0.1:8150/index.html";
 mkdirSync("shots", { recursive: true });
 const errs = [];
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
 page.on("console", (m) => { if (m.type() === "error") errs.push("C " + m.text()); });
 page.on("pageerror", (e) => errs.push("P " + e.message));
-await page.goto(URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+await page.goto(URL, { waitUntil: "domcontentloaded", timeout: 120000 });
 await page.waitForFunction(() => !!window.__game, null, { timeout: 30000 });
 await page.waitForTimeout(700);
 const out = {};

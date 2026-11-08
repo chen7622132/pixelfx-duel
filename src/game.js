@@ -281,6 +281,32 @@ function lungeCurve(t, hit) {
   return 28 * (1 - k * k);
 }
 const camFocus = { x: 160, y: 96 };
+const CR = [];   // 落地裂缝
+function crack(x, power) {
+  const arms = [];
+  const n = 2 + Math.min(3, power);
+  for (let i = 0; i < n; i++) {
+    const dir = i % 2 ? 1 : -1;
+    const pts = [];
+    const len = (10 + power * 8) * rnd(0.7, 1.2);
+    for (let s2 = 1; s2 <= 3; s2++) {
+      pts.push([dir * len * (s2 / 3), rnd(-2.5, 2.5) + (s2 === 3 ? rnd(-3, 1) : 0)]);
+    }
+    arms.push(pts);
+  }
+  CR.push({ x, y: GROUND + 1, t: 0, life: 0.45 + power * 0.13, arms,
+    c: power >= 3 ? "#ffcf8a" : "#6b5c4a" });
+  if (CR.length > 20) CR.shift();
+}
+// 落地：裂缝 + 尘 + 轻震
+function landFX(x, power) {
+  crack(x, power);
+  for (let i = 0; i < 5 + power; i++) {
+    PT.push({ k: "dust", x: x + rnd(-14, 14), y: GROUND - rnd(0, 4), vx: rnd(-38, 38),
+      vy: rnd(-26, -5), life: rnd(0.35, 0.7), t: 0, sz: 1 + (rnd(0, 2) | 0), c: 0xff6a5a44 });
+  }
+  shake = Math.max(shake, 1.8 + power * 0.7);
+}
 
 function burst(x, y, power, dir) {
   const n = 4 + power * 3;
@@ -419,7 +445,7 @@ function physicsOf(f, dt) {
   if (F.x > 296) { F.x = 296; if (F.vx > 0) { F.vx = -F.vx * 0.55; smash("right", f); } }
   if (F.y >= 0) {
     F.y = 0;
-    if (F.vy > 240) { F.vy = -F.vy * 0.4; F.vx *= 0.7; thud(f); }
+    if (F.vy > 240) { const hard = F.vy > 400; F.vy = -F.vy * 0.4; F.vx *= 0.7; thud(f, hard); }
     else { F.vy = 0; F.vx *= Math.pow(0.02, dt); if (Math.abs(F.vx) < 26) { F.vx = 0; F.air = false; } }
   } else F.air = true;
 }
@@ -431,11 +457,13 @@ function smash(side, f) {
   addFx(iBlunt, { x, y: GROUND - 44 + f.def.lift, seed: ri(1, 900) });
   sfx(3);
 }
-function thud(f) {
+function thud(f, hard) {
   floorHits++;
-  shake = Math.max(shake, 2.4);
-  addRing(f.F.x, GROUND - 6 + f.def.lift, 2);
-  sfx(2);
+  shake = Math.max(shake, hard ? 4.6 : 2.4);
+  if (hard) zoom = Math.max(zoom, 0.045);
+  addRing(f.F.x, GROUND - 6 + f.def.lift, hard ? 3 : 2);
+  if (hard) { crack(f.F.x, 3); burst(f.F.x, GROUND - 10, 2, f.F.vx >= 0 ? 1 : -1); }
+  sfx(hard ? 3 : 2);
 }
 
 // ---- 文字 / 图标 ---------------------------------------------------------
@@ -607,6 +635,16 @@ function meHit(id, chain) {
   }
   if (crit) dmg = Math.round(dmg * 1.35);
   if (f.guard) { dmg = Math.round(dmg * 0.6); f.guard = false; guarded = true; }
+  // 空中追击：目标在空中命中时给一段慢镜 + 向上炸开的速度线
+  const airborne = f.F.y < -12;
+  if (airborne) {
+    S.slow = Math.max(S.slow, 0.2);
+    for (let i = 0; i < 7; i++) {
+      PT.push({ k: "line", x: f.F.x + rnd(-10, 10), y: GROUND + f.def.lift + f.F.y - 20,
+        a: -Math.PI / 2 + rnd(-0.75, 0.75), len: rnd(16, 34), life: rnd(0.1, 0.2), t: 0,
+        c: 0xffc8f0ff });
+    }
+  }
   addEnergy(12);
   bumpCombo();
   if (chain) { addRing(f.F.x, GROUND + f.def.lift - 50, 3); sfx(2); }
@@ -986,8 +1024,13 @@ function step(dt) {
   const pTarget = cineLike ? S.cinePX : (S.phase === "exec" || S.phase === "plan") ? (S.dashTo ?? PX) : PX;
   pPos += (pTarget - pPos) * (1 - Math.exp(-dt * 16));
   const fr = tgt();
-  const pYTarget = (S.phase === "exec") && fr ? Math.max(-52, Math.min(0, fr.F.y)) : 0;
-  pY += (pYTarget - pY) * (1 - Math.exp(-dt * 11));
+  // 目标被打飞起来时，玩家跳起来追打（高度跟着敌人走，还多冲一点）
+  const airFoe = !!(fr && (fr.F.y < -10 || fr.F.air));
+  const pYTarget = (S.phase === "exec") && fr
+    ? Math.max(-74, Math.min(0, fr.F.y * (airFoe ? 1.18 : 1))) : 0;
+  pY += (pYTarget - pY) * (1 - Math.exp(-dt * (airFoe ? 17 : 11)));
+  if (pY < -26) S.airHigh = true;
+  else if (S.airHigh && pY > -4) { S.airHigh = false; landFX(pPos, airFoe ? 3 : 2); }
   const lbT = (S.phase === "cineIn" || S.phase === "cine") ? 16 : 0;
   lb += (lbT - lb) * (1 - Math.exp(-dt * 13));
 
@@ -1032,6 +1075,7 @@ function step(dt) {
     if (e.t >= e.life) embers.splice(i, 1);
   }
   stepPt(dEff);
+  for (let i = CR.length - 1; i >= 0; i--) { CR[i].t += dEff; if (CR[i].t >= CR[i].life) CR.splice(i, 1); }
 
   switch (S.phase) {
     case "exec": {
@@ -1151,6 +1195,11 @@ function draw() {
       drawActor(gp, ACTOR, 0.26);
     }
   }
+  const shp = painterFor(frame); shp.place(0, 0);
+  if (pY < -6) {
+    const sk = Math.min(1, -pY / 60);
+    shp.rect(Math.round(pPos + lungeP - 7 + sk * 3), GROUND + 1, Math.round(14 - sk * 6), 1, hex("#000000"), 0.45);
+  }
   const p = painterFor(frame);
   p.place(pPos + lungeP + lean + pKb + (playerHit > 0 ? rnd(-1.5, 1.5) : 0), GROUND + pY);
   drawActor(p, ACTOR, 1);
@@ -1201,6 +1250,20 @@ function draw() {
   for (const fl of floats) fl.draw(frame, "front");
   if (transFx) transFx.draw(frame, "front");
 
+  if (CR.length) {
+    const kp = painterFor(frame); kp.place(0, 0);
+    for (const k of CR) {
+      const a2 = Math.max(0, 1 - (k.t / k.life) * (k.t / k.life));
+      for (const arm of k.arms) {
+        let lx = Math.round(k.x), ly = Math.round(k.y);
+        for (const seg of arm) {
+          const nx = Math.round(k.x + seg[0]), ny = Math.round(k.y + seg[1]);
+          kp.line(lx, ly, nx, ny, hex(k.c), a2);
+          lx = nx; ly = ny;
+        }
+      }
+    }
+  }
   if (PT.length) {
     const pt = painterFor(frame); pt.place(0, 0);
     for (const p of PT) {
@@ -1461,6 +1524,7 @@ window.__game = {
     pt: PT.length, shake, stance: S.stance, px: +pPos.toFixed(1),
     cam: [+camFocus.x.toFixed(1), +camFocus.y.toFixed(1)],
     acts: S.exec ? S.exec.list.map((a) => a.side[0] + (a.foes ? a.foes.length : 1)) : [],
+    pY: +pY.toFixed(1), cracks: CR.length,
     phase: S.phase, stage: S.stage, wave: S.wave, round: S.round, kills: S.kills,
     hp: S.hp, maxhp: S.maxhp, shield: S.shield, skills: S.skills.slice(), mods: { ...S.mods },
     target: S.target, actor: S.actor, upChoices: S.upChoices && S.upChoices.map((u) => u.id),

@@ -35,6 +35,11 @@ import * as uAlert from "../vendor/pixelfx/fx/ui/exclamation.js";
 import * as fTorch from "../vendor/pixelfx/fx/fire/torch.js";
 import * as tBurn from "../vendor/pixelfx/fx/transitions/burn-away.js";
 import * as spawnSoul from "../vendor/pixelfx/fx/spawn/soul-rise.js";
+import * as wFog from "../vendor/pixelfx/fx/weather/fog.js";
+import * as wFirefly from "../vendor/pixelfx/fx/weather/fireflies.js";
+import * as wLeaves from "../vendor/pixelfx/fx/weather/falling-leaves.js";
+import * as wRays from "../vendor/pixelfx/fx/weather/god-rays.js";
+import * as wStars from "../vendor/pixelfx/fx/weather/shooting-stars.js";
 
 import * as gArrow from "../vendor/pixelfx/fx/moves/arrow-shot.js";
 import * as gDash from "../vendor/pixelfx/fx/moves/dash-strike.js";
@@ -61,7 +66,38 @@ off.width = W; off.height = H;
 const octx = off.getContext("2d");
 const img = octx.createImageData(W, H);
 const frame = createFrame(W, H);
-const BG = backdrop("ground", W, H, GROUND);
+const BG_BASE = backdrop("ground", W, H, GROUND);
+// 同一张底图做色调分离，让三层像三个不同地方
+function tint(src, mr, mg, mb, ar, ag, ab) {
+  const out = new Uint32Array(src.length);
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    const a = c >>> 24, r = c & 255, g = (c >>> 8) & 255, b = (c >>> 16) & 255;
+    out[i] = (a << 24)
+      | (Math.min(255, r * mr + ar) & 255)
+      | ((Math.min(255, g * mg + ag) & 255) << 8)
+      | ((Math.min(255, b * mb + ab) & 255) << 16);
+  }
+  return out;
+}
+const BGS = [
+  tint(BG_BASE, 0.62, 1.08, 0.66, 0, 16, 4),    // 腐沼：沼泽绿
+  tint(BG_BASE, 1.18, 0.96, 0.60, 14, 6, 0),    // 枯井：土黄砖石
+  tint(BG_BASE, 0.94, 0.58, 1.25, 18, 0, 26),   // 深渊：暗紫虚空
+];
+const PURPLE_FOG = ["#0d0818", "#1a1030", "#281643", "#38205e", "#4b2a78", "#6b3d9a", "#9660c0", "#c99ee0"];
+const AMB = [
+  [[wFog, null], [wFirefly, null]],
+  [[wLeaves, null], [wRays, null]],
+  [[wStars, null], [wFog, { palette: PURPLE_FOG }]],
+];
+let ambFx = [];
+function setStageFx(force) {
+  if (!force && ambFx.stage === S.stage) return;
+  ambFx = AMB[Math.min(S.stage, AMB.length - 1)].map(([m, o]) =>
+    createFx(m, { x: 160, y: 170, seed: ri(1, 900), ...(o || {}) }));
+  ambFx.stage = S.stage;
+}
 const ACTOR = stockActor(2);
 const TORCHES = [
   createFx(fTorch, { x: 16, y: GROUND + 10, seed: 11 }),
@@ -648,6 +684,7 @@ function applyUpgrade(id, silent) {
   nextWave();
 }
 function startWave() {
+  setStageFx();
   spawnWave();
   if (S.eliteWave) {
     for (const f of foes) { f.hp = Math.round(f.hp * 1.6); f.maxhp = f.hp; }
@@ -744,6 +781,7 @@ function restart() {
   floats.length = 0; rings.length = 0; atkFx = null; transFx = null;
   pPos = PX; pY = 0; pKb = 0;
   renderSkills();
+  setStageFx(true);
   spawnWave();
   const f = pickActor();
   S.phase = "ready"; S.t = 0;
@@ -788,6 +826,7 @@ function step(dt) {
   if (atkFx) atkFx.update(dEff);
   if (transFx) transFx.update(dEff);
   for (const t of TORCHES) t.update(dt);
+  for (const a of ambFx) a.update(dt);
   for (let i = floats.length - 1; i >= 0; i--) { floats[i].update(dEff); if (floats[i].done()) floats.splice(i, 1); }
   for (let i = rings.length - 1; i >= 0; i--) { rings[i].t += dEff; if (rings[i].t >= rings[i].life) rings.splice(i, 1); }
   if (shake > 0) shake = Math.max(0, shake - dt * 14);
@@ -847,7 +886,8 @@ function step(dt) {
 // ---- 绘制 ----------------------------------------------------------------
 function draw() {
   clearFrame(frame);
-  frame.color.set(BG);
+  frame.color.set(BGS[Math.min(S.stage, BGS.length - 1)] || BGS[0]);
+  for (const a of ambFx) a.draw(frame, "back");
   const vis = foes.filter((f) => f.alive || f.deathT > 0).sort((a, b) => a.F.x - b.F.x);
 
   if (embers.length) {
@@ -1147,7 +1187,7 @@ requestAnimationFrame(tick);
 
 window.__game = {
   S, foes, chooseMove, SKILL_POOL, FINISHERS, STAGES, UPGRADES, addEnergy, startFinisher,
-  paintButtons, previewOf, log, applyUpgrade, offerUpgrade, nextWave, offerRoute, pickRoute,
+  paintButtons, previewOf, log, applyUpgrade, offerUpgrade, nextWave, offerRoute, pickRoute, setStageFx, startWave,
   dbg: () => ({
     hitstop, zoom, flashN, whiteN, wallHits, floorHits, audio: !!AC && AC.state,
     phase: S.phase, stage: S.stage, wave: S.wave, round: S.round, kills: S.kills,

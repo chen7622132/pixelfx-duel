@@ -1,8 +1,10 @@
-// 像素对决 —— pixelfx 回合制对战 v1.1（带回能量终结技）
-// 渲染：320×180 内部像素缓冲 → 整数倍放大到 1280×720
+// 像素对决 —— v1.2「完全信息」版
+// 轮 1-3：敌方意图预告（图标+数字）· 打断因果可视化 · 状态图标化
+// 设计依据：Into the Breach 的「敌人意图全公开」与 Slay the Spire 的 intent 系统
 import {
-  createFrame, clearFrame, createFx, composite, painterFor, drawActor, stockActor, backdrop,
+  createFrame, clearFrame, createFx, composite, painterFor, drawActor, stockActor, backdrop, hex,
 } from "../vendor/pixelfx/core/index.js";
+import { textWidth, rasterText } from "../vendor/pixelfx/core/font.js";
 
 import * as mSword from "../vendor/pixelfx/fx/melee/sword-slash.js";
 import * as mThrust from "../vendor/pixelfx/fx/melee/thrust.js";
@@ -10,6 +12,8 @@ import * as mHammer from "../vendor/pixelfx/fx/melee/hammer-smash.js";
 import * as mSpin from "../vendor/pixelfx/fx/melee/spin-slash.js";
 import * as iBlunt from "../vendor/pixelfx/fx/impacts/blunt-hit.js";
 import * as iCrit from "../vendor/pixelfx/fx/impacts/crit-hit.js";
+import * as iShield from "../vendor/pixelfx/fx/impacts/shield-block.js";
+import * as iSpark from "../vendor/pixelfx/fx/impacts/hit-spark.js";
 import * as sBurning from "../vendor/pixelfx/fx/status/burning.js";
 import * as sPoison from "../vendor/pixelfx/fx/status/poisoned.js";
 import * as sBleed from "../vendor/pixelfx/fx/status/bleeding.js";
@@ -23,7 +27,6 @@ import * as uAlert from "../vendor/pixelfx/fx/ui/exclamation.js";
 import * as fTorch from "../vendor/pixelfx/fx/fire/torch.js";
 import * as tBurn from "../vendor/pixelfx/fx/transitions/burn-away.js";
 
-// 12 个完整招式（终结技）
 import * as gArrow from "../vendor/pixelfx/fx/moves/arrow-shot.js";
 import * as gDash from "../vendor/pixelfx/fx/moves/dash-strike.js";
 import * as gStomp from "../vendor/pixelfx/fx/moves/earth-stomp.js";
@@ -38,11 +41,9 @@ import * as gRocket from "../vendor/pixelfx/fx/moves/rocket-launcher.js";
 import * as gCombo from "../vendor/pixelfx/fx/moves/sword-combo.js";
 
 const W = 320, H = 180, SCALE = 4;
-const GROUND = 152, PX = 118, EX = 196;
-const CINE_LINE = 262;      // 终结技时敌人靶位固定在右起 58px
-const MAX_ENERGY = 100;
+const GROUND = 152, PX = 118, EX = 196, CINE_LINE = 262, MAX_ENERGY = 100;
 
-// ---- 画布与缓冲 ----------------------------------------------------------
+// ---- 画布 ----------------------------------------------------------------
 const cv = document.getElementById("screen");
 const ctx = cv.getContext("2d");
 ctx.imageSmoothingEnabled = false;
@@ -66,46 +67,55 @@ const MOVES = [
   { mod: mSpin,   name: "回旋斩", dmg: [13, 17], hit: 0.17, shake: 2, cd: 1, bleed: true },
 ];
 
-// 12 个终结技：伤害 / 元素 / 该招式自带的靶距 (act.target)
 const FINISHERS = {
-  "fireball-throw":  { mod: gFireball,  name: "火球投掷", el: "FIRE",       dmg: [34, 44], target: 190, hit: 1.41 },
-  "earth-stomp":     { mod: gStomp,     name: "大地践踏", el: "EARTH",      dmg: [32, 40], target: 112, hit: 0.06 },
-  "ground-pound":    { mod: gPound,     name: "坠落重击", el: "IMPACT",     dmg: [33, 42], target: 80, hit: 0.62 },
-  "sword-combo":     { mod: gCombo,     name: "三段连斩", el: "BLADE",      dmg: [30, 39], target: 118, hit: 0.06 },
-  "lightning-call":  { mod: gLightning, name: "引雷",     el: "THUNDER",    dmg: [35, 46], target: 130, hit: 0.76 },
-  "ice-lance-throw": { mod: gIce,       name: "冰枪投掷", el: "FROST",      dmg: [33, 43], target: 170, hit: 1.14 },
-  "dash-strike":     { mod: gDash,      name: "疾风突袭", el: "BLADE",      dmg: [30, 39], target: 176, hit: 0.22 },
-  "meteor-call":     { mod: gMeteor,    name: "召唤陨石", el: "METEOR",     dmg: [38, 50], target: 170, hit: 1.52 },
-  "holy-smite":      { mod: gHoly,      name: "圣光制裁", el: "HOLY",       dmg: [35, 46], target: 118, hit: 0.47 },
-  "rocket-launcher": { mod: gRocket,    name: "火箭筒",   el: "BLAST",      dmg: [37, 48], target: 200, hit: 0.6 },
-  "pistol-shots":    { mod: gPistol,    name: "三连射",   el: "SHOT",       dmg: [28, 37], target: 180, hit: 0.26 },
-  "arrow-shot":      { mod: gArrow,     name: "穿云箭",   el: "ARROW",      dmg: [30, 39], target: 180, hit: 0.8 },
+  "fireball-throw":  { mod: gFireball,  name: "火球投掷", el: "FIRE",    dmg: [34, 44], target: 190, hit: 1.41 },
+  "earth-stomp":     { mod: gStomp,     name: "大地践踏", el: "EARTH",   dmg: [32, 40], target: 112, hit: 0.06 },
+  "ground-pound":    { mod: gPound,     name: "坠落重击", el: "IMPACT",  dmg: [33, 42], target: 80,  hit: 0.62 },
+  "sword-combo":     { mod: gCombo,     name: "三段连斩", el: "BLADE",   dmg: [30, 39], target: 118, hit: 0.06 },
+  "lightning-call":  { mod: gLightning, name: "引雷",     el: "THUNDER", dmg: [35, 46], target: 130, hit: 0.76 },
+  "ice-lance-throw": { mod: gIce,       name: "冰枪投掷", el: "FROST",   dmg: [33, 43], target: 170, hit: 1.14 },
+  "dash-strike":     { mod: gDash,      name: "疾风突袭", el: "BLADE",   dmg: [30, 39], target: 176, hit: 0.22 },
+  "meteor-call":     { mod: gMeteor,    name: "召唤陨石", el: "METEOR",  dmg: [38, 50], target: 170, hit: 1.52 },
+  "holy-smite":      { mod: gHoly,      name: "圣光制裁", el: "HOLY",    dmg: [35, 46], target: 118, hit: 0.47 },
+  "rocket-launcher": { mod: gRocket,    name: "火箭筒",   el: "BLAST",   dmg: [37, 48], target: 200, hit: 0.6 },
+  "pistol-shots":    { mod: gPistol,    name: "三连射",   el: "SHOT",    dmg: [28, 37], target: 180, hit: 0.26 },
+  "arrow-shot":      { mod: gArrow,     name: "穿云箭",   el: "ARROW",   dmg: [30, 39], target: 180, hit: 0.8 },
 };
 
 const FOES = [
-  { mod: cSlime, name: "史莱姆", hp: 52, dmg: [5, 7],  oy: -6,  heal: 14,
+  { mod: cSlime, name: "史莱姆", hp: 52, dmg: [5, 7],  oy: -6,  h: 88,  heal: 14,
     pool: ["fireball-throw", "earth-stomp", "ground-pound", "sword-combo"] },
-  { mod: cBat,   name: "蝙蝠",   hp: 64, dmg: [6, 9],  oy: -34, heal: 16,
+  { mod: cBat,   name: "蝙蝠",   hp: 64, dmg: [6, 9],  oy: -34, h: 80,  heal: 16,
     pool: ["lightning-call", "ice-lance-throw", "dash-strike", "meteor-call"] },
-  { mod: cGhost, name: "幽魂",   hp: 78, dmg: [8, 11], oy: -10, heal: 18,
+  { mod: cGhost, name: "幽魂",   hp: 78, dmg: [8, 11], oy: -10, h: 100, heal: 18,
     pool: ["holy-smite", "rocket-launcher", "pistol-shots", "arrow-shot"] },
 ];
 
-// ---- 运行时状态 ----------------------------------------------------------
+// 意图类型：色 / 提示
+const INTENT = {
+  attack: { c: "#ffd9a0", text: "攻击" },
+  heavy:  { c: "#ff5a4a", text: "蓄力重击" },
+  debuff: { c: "#7ee06a", text: "放毒" },
+  guard:  { c: "#8ab4ff", text: "举盾" },
+  stunned: { c: "#8f89a8", text: "被打断" },
+};
+
+// ---- 状态 ----------------------------------------------------------------
 const S = {
-  phase: "ready",   // ready | player | pause | enemy | kill | cineIn | cine | cineOut | over
+  phase: "ready",
   t: 0,
   hp: 120, maxhp: 120,
   foeIx: 0, fhp: 52, fmaxhp: 52,
   cd: [0, 0, 0, 0],
   moveIx: 0, hit: false,
-  stun: false, bleed: 0, poison: 0,
-  charging: false,
+  stun: false, bleed: 0, poison: 0, foeGuard: false,
+  intent: null,
   energy: 0,
+  round: 1,
   kills: 0,
-  fin: null,          // 当前终结技配置
-  cinePX: PX, cineEX: EX,
-  slow: 0,
+  fin: null, cinePX: PX, cineEX: EX, slow: 0,
+  breakFx: 0,
+  usedFins: new Set(),
 };
 let atkFx = null, foeFx = null, foeDotFx = null, transFx = null, alertFx = null;
 const floats = [];
@@ -117,20 +127,92 @@ const ri = (a, b) => Math.round(rnd(a, b));
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const $ = (id) => document.getElementById(id);
 
+// ---- 像素文字 ------------------------------------------------------------
+function drawText(p, str, x, y, color, font = "mini", k = 1, align = "center") {
+  const w = textWidth(str, font) * k;
+  const ox = align === "center" ? Math.round(x - w / 2) : align === "right" ? x - w : x;
+  rasterText(str, font, (gx, gy) => {
+    for (let dy = 0; dy < k; dy++) for (let dx = 0; dx < k; dx++) p.px(ox + gx * k + dx, y + gy * k + dy, color);
+  });
+}
+
+// ---- 意图图标 ------------------------------------------------------------
+function drawIcon(p, kind, x, y, c) {
+  if (kind === "attack") {            // 斜置短剑
+    p.line(x - 2, y + 9, x + 3, y + 1, c);
+    p.line(x - 3, y + 7, x, y + 10, c);
+    p.dot(x + 3, y + 1, c);
+  } else if (kind === "heavy") {      // 感叹号
+    p.rect(x - 1, y, 2, 6, c);
+    p.rect(x - 1, y + 8, 2, 2, c);
+  } else if (kind === "debuff") {     // 三个气泡
+    p.disc(x - 2, y + 3, 1.6, c);
+    p.disc(x + 2, y + 6, 1.2, c);
+    p.disc(x, y + 9, 1.0, c);
+  } else {                            // 盾
+    p.rect(x - 3, y + 1, 6, 5, c);
+    p.rect(x - 2, y + 6, 4, 2, c);
+    p.rect(x - 1, y + 8, 2, 1, c);
+  }
+}
+
+function drawIntent() {
+  if (!S.intent) return;
+  if (["kill", "over", "cineIn", "cine", "cineOut"].includes(S.phase)) return;
+  const I = S.intent, f = FOES[S.foeIx];
+  const cx = Math.round(ePos);
+  const y = GROUND + f.oy - f.h - 20;
+  const meta = INTENT[I.type] || INTENT.attack;
+  const col = hex(meta.c);
+  const p = painterFor(frame);
+  p.place(0, 0);
+  p.rect(cx - 19, y, 38, 13, hex("#08070d"), 0.86);
+  p.rect(cx - 19, y, 38, 1, col, 1);
+  p.rect(cx - 19, y + 12, 38, 1, col, 0.45);
+  drawIcon(p, I.type, cx - 11, y + 2, col);
+  if (I.dmg > 0) drawText(p, String(I.dmg), cx + 7, y + 4, col, "mini", 1, "center");
+  else drawText(p, "!", cx + 7, y + 4, col, "mini", 1, "center");
+  // 可打断标记
+  if (I.type === "heavy") {
+    const bx = cx + 22;
+    p.rect(bx, y + 3, 1, 7, hex("#ff5a4a"), 1);
+    p.rect(bx + 3, y + 3, 1, 7, hex("#ff5a4a"), 1);
+  }
+}
+
+// ---- 回合逻辑 ------------------------------------------------------------
 function addFx(mod, o) {
   const f = createFx(mod, o);
   floats.push(f);
   return f;
 }
 
+function rollIntent() {
+  const f = FOES[S.foeIx];
+  const base = ri(f.dmg[0], f.dmg[1]);
+  const r = Math.random();
+  if (r < 0.26 && S.round > 1) return { type: "heavy", dmg: Math.round(base * 1.9) };
+  if (r < 0.42) return { type: "debuff", dmg: 0 };
+  if (r < 0.54) return { type: "guard", dmg: 0 };
+  return { type: "attack", dmg: base };
+}
+
+function intentHint(I) {
+  if (I.type === "attack") return "对手将攻击 " + I.dmg + " 点";
+  if (I.type === "heavy") return "对手在蓄力 " + I.dmg + " 点重击 —— 突刺可打断";
+  if (I.type === "debuff") return "对手要放毒雾 —— 会中毒 3 回合";
+  return "对手要举盾 —— 你的伤害会 -40%";
+}
+
 function spawnFoe() {
   const f = FOES[S.foeIx];
   S.fmaxhp = f.hp; S.fhp = f.hp;
-  S.bleed = 0; S.stun = false; S.charging = false; S.fin = null;
+  S.bleed = 0; S.stun = false; S.foeGuard = false;
   foeFx = createFx(f.mod, { x: EX, y: GROUND + f.oy, seed: ri(1, 900) });
   foeDotFx = null; alertFx = null;
   $("ename").textContent = f.name;
   S.usedFins = new Set();
+  S.intent = null;
 }
 
 function setFoeDot(kind) {
@@ -138,7 +220,6 @@ function setFoeDot(kind) {
   if (mod) foeDotFx = createFx(mod, { x: ePos, y: GROUND + FOES[S.foeIx].oy + 6, seed: 7 });
 }
 
-// ---- 出招 ----------------------------------------------------------------
 function chooseMove(i) {
   if (S.phase !== "ready") return;
   if (i === 4) return startFinisher();
@@ -156,9 +237,15 @@ function resolveHit() {
   const m = MOVES[S.moveIx];
   let dmg = ri(m.dmg[0], m.dmg[1]);
   let crit = Math.random() < 0.12 || (m.stun && Math.random() < 0.3);
-  let broke = false;
-  if (m.break && S.charging) { broke = true; S.charging = false; dmg = Math.round(dmg * 1.5); crit = true; }
+  let broke = false, guarded = false;
+  if (m.break && S.intent && S.intent.type === "heavy") {
+    broke = true; dmg = Math.round(dmg * 1.5); crit = true;
+    S.intent = { type: "stunned", dmg: 0 };
+    S.breakFx = 0.7;
+    addFx(iSpark, { x: ePos, y: GROUND - 40, seed: ri(1, 900) });
+  }
   if (crit) dmg = Math.round(dmg * 1.35);
+  if (S.foeGuard) { dmg = Math.round(dmg * 0.6); S.foeGuard = false; guarded = true; }
   S.fhp = Math.max(0, S.fhp - dmg);
   addEnergy(14);
   shake = m.shake; foeHit = 0.2;
@@ -166,21 +253,21 @@ function resolveHit() {
   addFx(crit ? iCrit : iBlunt, { x: ePos - 20, y: GROUND - 26, seed: ri(1, 900) });
   if (m.stun) { S.stun = true; addFx(sStun, { x: ePos, y: GROUND - 62, seed: 3 }); }
   if (m.bleed && !S.bleed) { S.bleed = 3; setFoeDot("bleed"); }
-  hint(broke ? "识破！打断蓄力，造成 " + dmg : crit ? "暴击 " + dmg : "命中 " + dmg);
-  paintBars();
+  hint(broke ? "识破！打断蓄力，造成 " + dmg : guarded ? "被护盾吸收，仅 " + dmg : crit ? "暴击 " + dmg : "命中 " + dmg);
+  paintBars(); paintStatus();
 }
 
 function endTurn() {
   S.cd = S.cd.map((c) => Math.max(0, c - 1));
   if (S.fhp <= 0) return startKill();
   if (S.hp <= 0) return gameOver(false);
-  S.phase = "ready"; S.t = 0;
-  S.charging = Math.random() < 0.3 && !S.stun;
-  if (S.charging) {
-    alertFx = createFx(uAlert, { x: ePos, y: GROUND + FOES[S.foeIx].oy - 4, seed: ri(1, 900) });
-    hint("对手在蓄力 —— 用突刺可以打断");
-  } else hint(S.energy >= MAX_ENERGY ? "能量满 —— 可以放终结技" : "选一招");
-  paintButtons();
+  S.phase = "ready"; S.t = 0; S.round += 1;
+  S.intent = rollIntent();
+  if (S.intent.type === "heavy") {
+    alertFx = createFx(uAlert, { x: ePos, y: GROUND + FOES[S.foeIx].oy - 6, seed: ri(1, 900) });
+  }
+  hint(intentHint(S.intent));
+  paintButtons(); paintStatus();
 }
 
 function enemyTurn() {
@@ -195,31 +282,46 @@ function enemyTurn() {
     if (S.fhp <= 0) return startKill();
   }
   if (S.stun) {
-    S.stun = false; S.charging = false;
+    S.stun = false;
     addFx(sStun, { x: ePos, y: GROUND - 62, seed: 5 });
     hint("对手被击晕，跳过回合");
+    paintStatus();
+    return endTurn();
+  }
+  if (S.intent && S.intent.type === "stunned") {
+    hint("蓄力被打断，对手这回合动不了");
     return endTurn();
   }
   S.phase = "enemy"; S.t = 0; S.hit = false;
-  hint(S.charging ? "重击来了！" : "对手反击…");
+  hint(S.intent ? intentHint(S.intent) : "对手反击…");
+  paintStatus();
 }
 
 function enemyStrike() {
-  const f = FOES[S.foeIx];
-  let dmg = ri(f.dmg[0], f.dmg[1]);
-  const heavy = S.charging;
-  if (heavy) { dmg = Math.round(dmg * 1.8); S.charging = false; }
+  const I = S.intent || { type: "attack", dmg: 6 };
+  if (I.type === "guard") {
+    S.foeGuard = true;
+    addFx(iShield, { x: ePos, y: GROUND - 30, seed: 3 });
+    hint("对手举起了护盾");
+    paintStatus();
+    return;
+  }
+  if (I.type === "debuff") {
+    S.poison = 3;
+    addFx(sPoison, { x: pPos, y: GROUND, seed: 11 });
+    hint("你中毒了（3 回合）");
+    paintStatus();
+    return;
+  }
+  const dmg = I.dmg;
   S.hp = Math.max(0, S.hp - dmg);
   addEnergy(8);
+  const heavy = I.type === "heavy";
   shake = heavy ? 3 : 2; playerHit = 0.22;
   addFx(heavy ? uCrit : uDmg, { x: pPos + ri(-6, 6), y: GROUND - 58, text: "-" + dmg });
   addFx(iBlunt, { x: pPos + 16, y: GROUND - 24, seed: ri(1, 900) });
-  flash("red");
-  if (Math.random() < 0.15 && !S.poison) {
-    S.poison = 3;
-    addFx(sPoison, { x: pPos, y: GROUND, seed: 11 });
-    hint("你中毒了");
-  } else hint(heavy ? "重击 " + dmg + "！" : "受到 " + dmg + " 伤害");
+  flash(heavy ? "red" : "red");
+  hint(heavy ? "重击 " + dmg + "！" : "受到 " + dmg + " 伤害");
   paintBars();
 }
 
@@ -230,10 +332,7 @@ function addEnergy(n) {
 }
 
 function startFinisher(forceId) {
-  if (S.energy < MAX_ENERGY) {
-    hint("能量不足（" + S.energy + " / " + MAX_ENERGY + "）");
-    return;
-  }
+  if (S.energy < MAX_ENERGY) { hint("能量不足（" + S.energy + " / " + MAX_ENERGY + "）"); return; }
   const pool = FOES[S.foeIx].pool.filter((k) => !S.usedFins.has(k));
   const pick = pool.length ? pool : FOES[S.foeIx].pool;
   const id = forceId && FINISHERS[forceId] ? forceId : pick[ri(0, pick.length - 1)];
@@ -265,9 +364,11 @@ function finisherHit() {
 
 // ---- 结算 ----------------------------------------------------------------
 function startKill() {
-  S.phase = "kill"; S.t = 0; S.charging = false;
+  S.phase = "kill"; S.t = 0;
+  S.intent = null;
   transFx = createFx(tBurn, { x: W / 2, y: H / 2, seed: ri(1, 900) });
   hint("击败 " + FOES[S.foeIx].name);
+  paintStatus();
 }
 
 function nextFoe() {
@@ -279,42 +380,50 @@ function nextFoe() {
   if (S.foeIx >= FOES.length) return gameOver(true);
   spawnFoe();
   S.phase = "ready"; S.t = 0;
-  paintBars(); paintButtons();
-  hint(FOES[S.foeIx].name + " 出现了（回复 " + heal + " HP）");
+  S.intent = rollIntent();
+  paintBars(); paintButtons(); paintStatus();
+  hint(FOES[S.foeIx].name + " 出现了（回复 " + heal + " HP）· " + intentHint(S.intent));
 }
 
 function gameOver(win) {
-  S.phase = "over";
+  S.phase = "over"; S.intent = null;
   $("ovTitle").textContent = win ? "通关" : "被打倒了";
   $("ovText").textContent = win
-    ? "三只怪全部清掉，12 个终结技都摸过了。剩下 226 个特效等你接上去。"
-    : "倒在" + FOES[S.foeIx].name + "面前。再来一次？";
+    ? "三只怪全部清掉，用了 " + S.round + " 回合。12 个终结技都摸过了。"
+    : "倒在" + FOES[S.foeIx].name + "面前，第 " + S.round + " 回合。再来一次？";
   $("overlay").classList.remove("hide");
 }
 
 function restart() {
   $("overlay").classList.add("hide");
   S.hp = S.maxhp; S.foeIx = 0; S.kills = 0; S.cd = [0, 0, 0, 0]; S.energy = 0;
-  S.bleed = 0; S.poison = 0; S.stun = false; S.charging = false; S.fin = null;
+  S.bleed = 0; S.poison = 0; S.stun = false; S.foeGuard = false; S.round = 1;
+  S.fin = null; S.breakFx = 0;
   floats.length = 0; atkFx = null; transFx = null; alertFx = null;
   pPos = PX; ePos = EX;
-  spawnFoe(); S.phase = "ready"; S.t = 0;
-  paintBars(); paintButtons(); paintFin(); hint("选一招");
+  spawnFoe();
+  S.intent = rollIntent();
+  S.phase = "ready"; S.t = 0;
+  paintBars(); paintButtons(); paintFin(); paintStatus();
+  hint(intentHint(S.intent));
 }
 
 // ---- 主循环 --------------------------------------------------------------
 let last = performance.now();
-let lastDt = 0.016;
 function tick(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
-  last = now; lastDt = dt;
-  step(dt);
-  draw();
+  last = now;
+  try {
+    step(dt);
+    draw();
+  } catch (e) {
+    console.error("frame error:", e && e.message);
+  }
   requestAnimationFrame(tick);
 }
 
 function step(dt) {
-  const cineLike = S.phase === "cineIn" || S.phase === "cine" || S.phase === "cineOut";
+  const cineLike = ["cineIn", "cine", "cineOut"].includes(S.phase);
   pPos += ((cineLike ? S.cinePX : PX) - pPos) * (1 - Math.exp(-dt * 9));
   ePos += ((cineLike ? S.cineEX : EX) - ePos) * (1 - Math.exp(-dt * 9));
   const lbT = (S.phase === "cineIn" || S.phase === "cine") ? 16 : 0;
@@ -324,6 +433,7 @@ function step(dt) {
   if (S.slow > 0) { S.slow -= dt; d = dt * 0.22; }
   const dEff = S.phase === "cine" ? d * 1.1 : d;
   S.t += dEff;
+  if (S.breakFx > 0) S.breakFx = Math.max(0, S.breakFx - dt);
 
   if (foeFx) foeFx.update(dEff);
   if (foeDotFx) { foeDotFx.update(dEff); if (foeDotFx.done()) foeDotFx = null; }
@@ -367,7 +477,7 @@ function step(dt) {
         S.fin = null;
         if (S.fhp <= 0) return nextFoe();
         S.phase = "ready"; S.t = 0;
-        hint("选一招");
+        hint(intentHint(S.intent));
         paintButtons(); paintFin();
       }
       break;
@@ -405,6 +515,16 @@ function draw() {
   for (const fl of floats) fl.draw(frame, "front");
   if (transFx) transFx.draw(frame, "front");
 
+  drawIntent();
+
+  if (S.breakFx > 0) {
+    const pp = painterFor(frame);
+    pp.place(0, 0);
+    const a = Math.min(1, S.breakFx * 2.4);
+    drawText(pp, "BREAK!", W / 2, GROUND - 118, hex("#ffe066"), "big", 2, "center");
+    if (a > 0.9) drawText(pp, "BREAK!", W / 2, GROUND - 118, hex("#ffffff"), "big", 2, "center");
+  }
+
   const bh = Math.round(lb);
   if (bh > 0) {
     frame.color.fill(0xff000000, 0, W * bh);
@@ -430,14 +550,28 @@ function paintBars() {
   $("eht").textContent = Math.max(0, S.fhp);
 }
 
+function paintStatus() {
+  const e = [];
+  if (S.bleed > 0) e.push('<span>🩸<b class="tag">' + S.bleed + '</b></span>');
+  if (S.stun) e.push('<span>💫<b class="tag">晕</b></span>');
+  if (S.foeGuard) e.push('<span>🛡<b class="tag">减伤</b></span>');
+  $("estatus").innerHTML = e.length ? e.join("") : '<span class="none">无状态</span>';
+  const p = [];
+  if (S.poison > 0) p.push('<span>☠<b class="tag">' + S.poison + '</b></span>');
+  $("pstatus").innerHTML = p.length ? p.join("") : '<span class="none">无状态</span>';
+}
+
 const btns = [...document.querySelectorAll(".mv")];
 function paintButtons() {
+  const I = S.intent;
+  const canBreak = I && I.type === "heavy";
   btns.forEach((b, i) => {
     if (i === 4) return;
     const cool = S.cd[i] > 0;
     b.classList.toggle("cool", cool);
     b.classList.toggle("busy", S.phase !== "ready" || cool);
     b.querySelector("u").style.width = cool ? "100%" : "0";
+    if (i === 1) b.classList.toggle("hint-break", canBreak && !cool);
   });
   paintFin();
 }
@@ -470,12 +604,12 @@ addEventListener("keydown", (e) => {
 });
 
 spawnFoe();
-paintBars(); paintButtons(); paintFin();
-hint("选一招");
+S.intent = rollIntent();
+paintBars(); paintButtons(); paintFin(); paintStatus();
+hint(intentHint(S.intent));
 requestAnimationFrame(tick);
 
 window.__game = {
-  S, chooseMove, MOVES, FINISHERS,
+  S, chooseMove, MOVES, FINISHERS, addEnergy, startFinisher, paintButtons,
   get foe() { return FOES[S.foeIx]; },
-  addEnergy, startFinisher, // 自检用
 };

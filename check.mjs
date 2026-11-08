@@ -1,7 +1,7 @@
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 
-const URL = process.argv[2] ?? "http://127.0.0.1:8124/index.html";
+const URL = process.argv[2] ?? "http://127.0.0.1:8130/index.html";
 mkdirSync("shots", { recursive: true });
 const errs = [];
 const browser = await chromium.launch();

@@ -33,7 +33,12 @@ canvas{width:100%;height:auto;display:block;image-rendering:pixelated;image-rend
   background:#2a1a10;color:#ffcf9a;cursor:pointer}
 .card button:active{transform:translateY(1px)}
 
-.bars{display:grid;gap:6px;margin:10px 0 12px}
+.bars{display:grid;gap:3px;margin:10px 0 12px}
+.status{display:flex;gap:9px;align-items:center;min-height:15px;font-size:11px;color:#8f89a8;
+  padding-left:2px;letter-spacing:.02em}
+.status span{display:inline-flex;align-items:center;gap:3px}
+.status .tag{font-size:10px;color:#f0c27a}
+.status .none{color:#4b4560}
 .bar{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;font-size:11px}
 .who{width:64px;color:#cfc9e0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .track{height:9px;background:#241f31;border:1px solid var(--line);position:relative;overflow:hidden}
@@ -55,6 +60,12 @@ canvas{width:100%;height:auto;display:block;image-rendering:pixelated;image-rend
 .mv.cool{border-color:#4a3a24}
 .mv.cool u{width:100%;background:#7a5a2e}
 .hint{margin:10px 2px 0;font-size:11px;color:var(--dim);min-height:15px}
+
+/* 可打断提示：敌人蓄力时突刺按钮发光 */
+.mv.hint-break{border-color:#ff5a4a;background:#2a1412}
+.mv.hint-break b{color:#ffb0a2}
+.mv.hint-break::after{content:"可打断";position:absolute;top:-7px;right:-1px;font-size:9px;
+  background:#ff5a4a;color:#1a0806;padding:1px 4px;letter-spacing:.05em}
 
 @media (max-width:430px){
   h1{font-size:16px}

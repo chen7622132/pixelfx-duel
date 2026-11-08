@@ -47,6 +47,20 @@ canvas{width:100%;height:auto;display:block;image-rendering:pixelated;image-rend
 .bar.foe .track i{background:linear-gradient(90deg,#8f2b31,var(--foe))}
 .bar b{width:34px;text-align:right;color:var(--dim);font-variant-numeric:tabular-nums}
 
+
+/* 三只怪的血条（可点选目标） */
+.foebars{display:grid;gap:2px}
+.fbar{display:grid;grid-template-columns:50px 1fr 26px;align-items:center;gap:6px;font-size:10px;
+  color:#b9b4cc;padding:1px 3px;cursor:pointer;border:1px solid transparent;line-height:1.6}
+.fbar.tgt{border-color:#5a4632;background:#1d1712}
+.fbar.dead{opacity:.32;text-decoration:line-through}
+.fbar .fn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fbar .ftrack{height:7px;background:#241f31;border:1px solid var(--line);position:relative;overflow:hidden}
+.fbar .ftrack i{position:absolute;left:0;top:0;bottom:0;transition:width .18s ease-out;
+  background:linear-gradient(90deg,#7d262c,#d8444c)}
+.fbar.tgt .ftrack i{background:linear-gradient(90deg,#8a5216,#ff9a4a)}
+.fbar b{text-align:right;color:var(--dim);font-variant-numeric:tabular-nums}
+
 .moves{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
 .mv{position:relative;font:inherit;text-align:left;padding:9px 8px 10px;cursor:pointer;
   background:var(--ink2);border:1px solid var(--line);color:#e8e6f0;transition:border-color .15s,background .15s}

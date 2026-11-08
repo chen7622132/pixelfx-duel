@@ -18,7 +18,7 @@ const txt = (i) => page.evaluate((k) => document.querySelector('.mv[data-i="' + 
 // 1 伤害预览
 const t0 = await txt(0), t2 = await txt(2);
 const hint0 = await page.evaluate(() => document.getElementById("hint").textContent);
-out.steps.push({ t: "preview", move1: t0, move3: t2, hint: hint0, ok: /^\d+-\d+$/.test(t0) && /\d+-\d+/.test(hint0) });
+out.steps.push({ t: "preview", move1: t0, move3: t2, hint: hint0, ok: /^\d+-\d+$/.test(t0) && /^R\d+ · /.test(hint0) });
 
 // 2 必杀高亮：把敌人血量压到 5
 await page.evaluate(() => { window.__game.S.fhp = 5; window.__game.paintButtons(); });

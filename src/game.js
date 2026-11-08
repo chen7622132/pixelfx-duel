@@ -14,6 +14,8 @@ import * as iBlunt from "../vendor/pixelfx/fx/impacts/blunt-hit.js";
 import * as iCrit from "../vendor/pixelfx/fx/impacts/crit-hit.js";
 import * as iShield from "../vendor/pixelfx/fx/impacts/shield-block.js";
 import * as iSpark from "../vendor/pixelfx/fx/impacts/hit-spark.js";
+import * as iFrame from "../vendor/pixelfx/fx/impacts/impact-frame.js";
+import * as iFlash from "../vendor/pixelfx/fx/impacts/hit-flash.js";
 import * as sBurning from "../vendor/pixelfx/fx/status/burning.js";
 import * as sPoison from "../vendor/pixelfx/fx/status/poisoned.js";
 import * as sBleed from "../vendor/pixelfx/fx/status/bleeding.js";
@@ -61,10 +63,14 @@ const TORCHES = [
 
 // ---- 内容表 --------------------------------------------------------------
 const MOVES = [
-  { mod: mSword,  name: "疾斩",   dmg: [11, 15], hit: 0.06, shake: 2, cd: 0 },
-  { mod: mThrust, name: "突刺",   dmg: [14, 18], hit: 0.07, shake: 2, cd: 1, break: true },
-  { mod: mHammer, name: "碎地锤", dmg: [28, 34], hit: 0.15, shake: 3, cd: 2, stun: true },
-  { mod: mSpin,   name: "回旋斩", dmg: [13, 17], hit: 0.17, shake: 2, cd: 1, bleed: true },
+  { mod: mSword,  name: "疾斩",   dmg: [8, 11],  hit: 0.06, power: 1, cd: 0,
+    follow: { dmg: [3, 4], t: 0.24 } },
+  { mod: mThrust, name: "突刺",   dmg: [10, 13], hit: 0.07, power: 2, cd: 1, break: true,
+    follow: { dmg: [4, 5], t: 0.26 } },
+  { mod: mHammer, name: "碎地锤", dmg: [22, 27], hit: 0.15, power: 3, cd: 2, stun: true,
+    follow: { dmg: [6, 7], t: 0.34 } },
+  { mod: mSpin,   name: "回旋斩", dmg: [9, 12],  hit: 0.17, power: 2, cd: 1, bleed: true,
+    follow: { dmg: [4, 5], t: 0.3 } },
 ];
 
 const FINISHERS = {
@@ -101,6 +107,9 @@ const INTENT = {
 };
 
 // ---- 状态 ----------------------------------------------------------------
+const curFoe = () => FOES[S.foeIx] || FOES[FOES.length - 1];
+const CRIT_PAL = ["#2a1a05", "#5a3a08", "#a06a0c", "#e8b030", "#ffe066", "#fff3c0", "#ffffff"];
+
 const S = {
   phase: "ready",
   t: 0,
@@ -121,6 +130,93 @@ const S = {
 let atkFx = null, foeFx = null, foeDotFx = null, transFx = null, alertFx = null;
 const floats = [];
 let shake = 0, foeHit = 0, playerHit = 0, lb = 0;
+// —— 打击感 ——
+let hitstop = 0;      // 顿帧：完全静止，打击的"咬合感"
+let zoom = 0;         // 镜头猛推
+let foeKb = 0;        // 击退位移（弹簧回位）
+let foeSink = 0;      // 受击下沉
+let pKb = 0;          // 玩家被击退
+let followT = 0;      // 追击段计时
+let flashN = 0;       // 受击白闪像素数（自检用）
+let whiteN = 0;       // 泛红像素数
+let AC = null;        // WebAudio
+const rings = [];     // 打击点的冲击环
+function addRing(x, y, power) {
+  rings.push({
+    x, y, t: 0, life: 0.17,
+    r0: 4 + power * 3, r1: 22 + power * 11,
+    c: power >= 3 ? "#ffe066" : power >= 2 ? "#ffd0a0" : "#ffffff",
+  });
+}
+
+function ensureAudio() {
+  try {
+    if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+    if (AC.state === "suspended") AC.resume();
+  } catch (e) { AC = null; }
+}
+let NOISE = null;
+function noiseBuf() {
+  if (NOISE) return NOISE;
+  NOISE = AC.createBuffer(1, Math.floor(AC.sampleRate * 0.09), AC.sampleRate);
+  const ch = NOISE.getChannelData(0);
+  for (let i = 0; i < ch.length; i++) ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / ch.length, 2);
+  return NOISE;
+}
+/** power 1-4：轻/中/重/终结技 */
+function sfx(power) {
+  if (!AC || AC.state !== "running") return;
+  const t = AC.currentTime;
+  const g = AC.createGain();
+  g.connect(AC.destination);
+  const dur = [0.07, 0.11, 0.2, 0.34][power - 1];
+  const o = AC.createOscillator();
+  o.type = power >= 3 ? "triangle" : "sine";
+  o.frequency.setValueAtTime([210, 165, 115, 90][power - 1], t);
+  o.frequency.exponentialRampToValueAtTime([65, 55, 40, 28][power - 1], t + dur);
+  g.gain.setValueAtTime([0.22, 0.3, 0.42, 0.5][power - 1], t);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  o.connect(g); o.start(t); o.stop(t + dur + 0.02);
+  const n = AC.createBufferSource();
+  n.buffer = noiseBuf();
+  const ng = AC.createGain();
+  ng.gain.setValueAtTime([0.1, 0.16, 0.26, 0.34][power - 1], t);
+  ng.gain.exponentialRampToValueAtTime(0.0008, t + 0.07);
+  n.connect(ng); ng.connect(AC.destination); n.start(t); n.stop(t + 0.1);
+}
+function sfxHurt() {
+  if (!AC || AC.state !== "running") return;
+  const t = AC.currentTime;
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = "sawtooth";
+  o.frequency.setValueAtTime(300, t);
+  o.frequency.exponentialRampToValueAtTime(70, t + 0.16);
+  g.gain.setValueAtTime(0.16, t);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + 0.17);
+  o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + 0.19);
+}
+
+/** 一次打击的全部反馈：顿帧 / 震屏 / 镜头 / 击退 / 下沉 / 音效 */
+function impact(power, on = "foe") {
+  const P = [
+    { stop: 0.06,  shake: 3, zoom: 0.035, kb: 9,  sink: 4 },
+    { stop: 0.085, shake: 4, zoom: 0.055, kb: 14, sink: 6 },
+    { stop: 0.125, shake: 6, zoom: 0.08,  kb: 20, sink: 8 },
+    { stop: 0.21,  shake: 9, zoom: 0.12,  kb: 34, sink: 10 },
+  ][Math.max(0, Math.min(3, power - 1))];
+  hitstop = Math.max(hitstop, P.stop);
+  shake = Math.max(shake, P.shake);
+  zoom = Math.max(zoom, P.zoom);
+  if (on === "foe") {
+    foeKb += P.kb;
+    foeSink = Math.max(foeSink, P.sink);
+    addRing(ePos + foeKb, GROUND - 34, power);
+  } else {
+    pKb -= P.kb * 0.7;
+  }
+  flash(power >= 3 ? "white" : "micro");
+  sfx(power);
+}
 let pPos = PX, ePos = EX;
 
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -160,7 +256,7 @@ function drawIcon(p, kind, x, y, c) {
 function drawIntent() {
   if (!S.intent) return;
   if (["kill", "over", "cineIn", "cine", "cineOut"].includes(S.phase)) return;
-  const I = S.intent, f = FOES[S.foeIx];
+  const I = S.intent, f = curFoe();
   const cx = Math.round(ePos);
   const y = GROUND + f.oy - f.h - 20;
   const meta = INTENT[I.type] || INTENT.attack;
@@ -189,7 +285,7 @@ function addFx(mod, o) {
 }
 
 function rollIntent() {
-  const f = FOES[S.foeIx];
+  const f = curFoe();
   const base = ri(f.dmg[0], f.dmg[1]);
   const r = Math.random();
   if (r < 0.26 && S.round > 1) return { type: "heavy", dmg: Math.round(base * 1.9) };
@@ -206,7 +302,7 @@ function intentHint(I) {
 }
 
 function spawnFoe() {
-  const f = FOES[S.foeIx];
+  const f = curFoe();
   S.fmaxhp = f.hp; S.fhp = f.hp;
   S.bleed = 0; S.stun = false; S.foeGuard = false;
   foeFx = createFx(f.mod, { x: EX, y: GROUND + f.oy, seed: ri(1, 900) });
@@ -218,10 +314,11 @@ function spawnFoe() {
 
 function setFoeDot(kind) {
   const mod = kind === "burn" ? sBurning : kind === "bleed" ? sBleed : null;
-  if (mod) foeDotFx = createFx(mod, { x: ePos, y: GROUND + FOES[S.foeIx].oy + 6, seed: 7 });
+  if (mod) foeDotFx = createFx(mod, { x: ePos, y: GROUND + curFoe().oy + 6, seed: 7 });
 }
 
 function chooseMove(i) {
+  ensureAudio();
   if (S.phase !== "ready") return;
   if (i === 4) return startFinisher();
   if (S.cd[i] > 0) return;
@@ -249,14 +346,33 @@ function resolveHit() {
   if (S.foeGuard) { dmg = Math.round(dmg * 0.6); S.foeGuard = false; guarded = true; }
   S.fhp = Math.max(0, S.fhp - dmg);
   addEnergy(14);
-  shake = m.shake; foeHit = 0.2;
-  addFx(crit ? uCrit : uDmg, { x: ePos + ri(-8, 8), y: GROUND - 72, text: "-" + dmg });
+  foeHit = 0.22;
+  impact(Math.min(4, m.power + (crit ? 1 : 0)));
+  { const pop = { x: ePos + ri(-8, 8), y: GROUND - 72, text: "-" + dmg }; if (crit) pop.palette = CRIT_PAL; addFx(uDmg, pop); }
   addFx(crit ? iCrit : iBlunt, { x: ePos - 20, y: GROUND - 26, seed: ri(1, 900) });
+  addFx(iFlash, { x: ePos, y: GROUND - 26, seed: ri(1, 900) });
+  if (crit) addFx(iFrame, { x: ePos, y: GROUND - 34, seed: ri(1, 900) });
+  if (m.follow) followT = m.follow.t;
   if (m.stun) { S.stun = true; addFx(sStun, { x: ePos, y: GROUND - 62, seed: 3 }); }
   if (m.bleed && !S.bleed) { S.bleed = 3; setFoeDot("bleed"); }
   hint(broke ? "识破！打断蓄力，造成 " + dmg : guarded ? "被护盾吸收，仅 " + dmg : crit ? "暴击 " + dmg : "命中 " + dmg);
   log("hit", m.name + " · " + dmg + (broke ? "（打断）" : guarded ? "（被盾吸收）" : crit ? "（暴击）" : "") + (S.fhp <= 0 ? " · 击杀" : ""));
   paintBars(); paintStatus();
+}
+
+function doFollow() {
+  const m = MOVES[S.moveIx];
+  if (!m.follow) return;
+  const dmg = ri(m.follow.dmg[0], m.follow.dmg[1]);
+  S.fhp = Math.max(0, S.fhp - dmg);
+  foeHit = 0.16;
+  impact(1);
+  addFx(uDmg, { x: ePos + ri(-10, 10), y: GROUND - 58, text: "-" + dmg });
+  addFx(iSpark, { x: ePos - 6, y: GROUND - 30, seed: ri(1, 900) });
+  hint("追打 " + dmg);
+  paintBars();
+  if (S.fhp <= 0) { log("hit", "追击 · " + dmg + " · 击杀"); startKill(); return; }
+  log("hit", "追击 · " + dmg);
 }
 
 function endTurn() {
@@ -266,7 +382,7 @@ function endTurn() {
   S.phase = "ready"; S.t = 0; S.round += 1;
   S.intent = rollIntent();
   if (S.intent.type === "heavy") {
-    alertFx = createFx(uAlert, { x: ePos, y: GROUND + FOES[S.foeIx].oy - 6, seed: ri(1, 900) });
+    alertFx = createFx(uAlert, { x: ePos, y: GROUND + curFoe().oy - 6, seed: ri(1, 900) });
   }
   hint(intentHint(S.intent));
   paintButtons(); paintStatus();
@@ -322,9 +438,12 @@ function enemyStrike() {
   S.hp = Math.max(0, S.hp - dmg);
   addEnergy(8);
   const heavy = I.type === "heavy";
-  shake = heavy ? 3 : 2; playerHit = 0.22;
+  playerHit = 0.26;
+  impact(heavy ? 3 : 1, "player");
+  sfxHurt();
   addFx(heavy ? uCrit : uDmg, { x: pPos + ri(-6, 6), y: GROUND - 58, text: "-" + dmg });
-  addFx(iBlunt, { x: pPos + 16, y: GROUND - 24, seed: ri(1, 900) });
+  addFx(heavy ? iCrit : iBlunt, { x: pPos + 16, y: GROUND - 24, seed: ri(1, 900) });
+  if (heavy) addFx(iFrame, { x: pPos, y: GROUND - 34, seed: ri(1, 900) });
   flash(heavy ? "red" : "red");
   hint(heavy ? "重击 " + dmg + "！" : "受到 " + dmg + " 伤害");
   log("hurt", (heavy ? "重击" : "攻击") + " · -" + dmg);
@@ -339,8 +458,8 @@ function addEnergy(n) {
 
 function startFinisher(forceId) {
   if (S.energy < MAX_ENERGY) { hint("能量不足（" + S.energy + " / " + MAX_ENERGY + "）"); return; }
-  const pool = FOES[S.foeIx].pool.filter((k) => !S.usedFins.has(k));
-  const pick = pool.length ? pool : FOES[S.foeIx].pool;
+  const pool = curFoe().pool.filter((k) => !S.usedFins.has(k));
+  const pick = pool.length ? pool : curFoe().pool;
   const id = forceId && FINISHERS[forceId] ? forceId : pick[ri(0, pick.length - 1)];
   S.usedFins.add(id);
   const F = FINISHERS[id];
@@ -360,9 +479,12 @@ function finisherHit() {
   const F = S.fin;
   const dmg = Math.round(ri(F.dmg[0], F.dmg[1]) * 1.35);
   S.fhp = Math.max(0, S.fhp - dmg);
-  shake = 4; foeHit = 0.3; S.slow = 0.16;
+  foeHit = 0.34; S.slow = 0.18;
+  impact(4);
   addFx(uCrit, { x: ePos, y: GROUND - 80, text: "-" + dmg });
   addFx(iCrit, { x: ePos - 30, y: GROUND - 40, seed: ri(1, 900) });
+  addFx(iFrame, { x: ePos, y: GROUND - 40, seed: ri(1, 900) });
+  addFx(iFlash, { x: ePos, y: GROUND - 30, seed: ri(1, 900) });
   flash("white");
   hint(F.name + " " + dmg + " 伤害");
   paintBars();
@@ -373,13 +495,13 @@ function startKill() {
   S.phase = "kill"; S.t = 0;
   S.intent = null;
   transFx = createFx(tBurn, { x: W / 2, y: H / 2, seed: ri(1, 900) });
-  hint("击败 " + FOES[S.foeIx].name);
-  log("win", "击败 " + FOES[S.foeIx].name);
+  hint("击败 " + curFoe().name);
+  log("win", "击败 " + curFoe().name);
   paintStatus();
 }
 
 function nextFoe() {
-  const heal = FOES[S.foeIx].heal;
+  const heal = curFoe().heal;
   S.hp = Math.min(S.maxhp, S.hp + heal);
   S.kills += 1; S.foeIx += 1;
   transFx = null;
@@ -389,15 +511,16 @@ function nextFoe() {
   S.phase = "ready"; S.t = 0;
   S.intent = rollIntent();
   paintBars(); paintButtons(); paintStatus();
-  hint(FOES[S.foeIx].name + " 出现了（回复 " + heal + " HP）· " + intentHint(S.intent));
+  hint(curFoe().name + " 出现了（回复 " + heal + " HP）· " + intentHint(S.intent));
 }
 
 function gameOver(win) {
   S.phase = "over"; S.intent = null;
+  foeFx = null; foeDotFx = null; alertFx = null;
   $("ovTitle").textContent = win ? "通关" : "被打倒了";
   $("ovText").textContent = win
     ? "三只怪全部清掉，用了 " + S.round + " 回合。12 个终结技都摸过了。"
-    : "倒在" + FOES[S.foeIx].name + "面前，第 " + S.round + " 回合。再来一次？";
+    : "倒在" + curFoe().name + "面前，第 " + S.round + " 回合。再来一次？";
   $("overlay").classList.remove("hide");
 }
 
@@ -430,6 +553,8 @@ function tick(now) {
 }
 
 function step(dt) {
+  // 顿帧：完全静止，连特效一起停 —— 这是打击感的"咬合"
+  if (hitstop > 0) { hitstop -= dt; return; }
   const cineLike = ["cineIn", "cine", "cineOut"].includes(S.phase);
   pPos += ((cineLike ? S.cinePX : PX) - pPos) * (1 - Math.exp(-dt * 9));
   ePos += ((cineLike ? S.cineEX : EX) - ePos) * (1 - Math.exp(-dt * 9));
@@ -452,7 +577,13 @@ function step(dt) {
     floats[i].update(dEff);
     if (floats[i].done()) floats.splice(i, 1);
   }
-  if (shake > 0) shake = Math.max(0, shake - dt * 12);
+  if (shake > 0) shake = Math.max(0, shake - dt * 14);
+  if (zoom > 0) zoom = Math.max(0, zoom - dt * 0.9);
+  if (foeKb > 0.2) foeKb *= Math.exp(-dt * 11); else foeKb = 0;
+  if (Math.abs(pKb) > 0.2) pKb *= Math.exp(-dt * 11); else pKb = 0;
+  if (foeSink > 0) foeSink = Math.max(0, foeSink - dt * 26);
+  for (let i = rings.length - 1; i >= 0; i--) { rings[i].t += dEff; if (rings[i].t >= rings[i].life) rings.splice(i, 1); }
+  if (followT > 0) { followT -= dEff; if (followT <= 0 && S.phase === "player") doFollow(); }
   if (foeHit > 0) foeHit = Math.max(0, foeHit - dt);
   if (playerHit > 0) playerHit = Math.max(0, playerHit - dt);
 
@@ -499,8 +630,11 @@ function draw() {
   frame.color.set(BG);
 
   const lunge = S.phase === "enemy" ? Math.sin(Math.min(1, S.t / 0.9) * Math.PI) * 42 : 0;
-  const jitter = foeHit > 0 ? rnd(-2, 2) : 0;
-  if (foeFx) foeFx.options.x = ePos - lunge + jitter;
+  const jitter = foeHit > 0 ? rnd(-1.5, 1.5) : 0;
+  if (foeFx) {
+    foeFx.options.x = ePos - lunge + jitter + foeKb;
+    foeFx.options.y = GROUND + curFoe().oy + foeSink;
+  }
   if (foeDotFx) foeDotFx.options.x = ePos;
   if (alertFx) alertFx.options.x = ePos;
 
@@ -511,14 +645,47 @@ function draw() {
   const lean = S.phase === "player" ? Math.sin(Math.min(1, S.t / 0.9) * Math.PI) * 7 : 0;
   if (atkFx) atkFx.options.x = pPos;
   const p = painterFor(frame);
-  p.place(pPos + lean + (playerHit > 0 ? rnd(-2, 2) : 0), GROUND);
+  p.place(pPos + lean + pKb + (playerHit > 0 ? rnd(-1.5, 1.5) : 0), GROUND);
   drawActor(p, ACTOR, 1);
 
   if (atkFx) atkFx.draw(frame, "front");
   if (foeFx) foeFx.draw(frame, "front");
+  // 受击白闪：把敌人矩形内的非透明像素全部刷白（2 帧）
+  if (foeHit > 0.045) {
+    const x0 = Math.max(0, Math.floor(ePos + foeKb - 58));
+    const x1 = Math.min(W, Math.ceil(ePos + foeKb + 58));
+    const y0 = Math.max(0, Math.floor(GROUND - 106));
+    const y1 = Math.min(H, Math.floor(GROUND + 2));
+    const white = foeHit > 0.19;              // 前 ~2 帧：整体变白
+    for (let y = y0; y < y1; y++) {
+      const row = y * W;
+      for (let x = x0; x < x1; x++) {
+        const c = frame.color[row + x];
+        if (c >>> 24 === 0) continue;
+        if (white) { frame.color[row + x] = 0xffffffff; flashN++; }
+        else {                                   // 之后 ~0.08s：泛红染色
+          const a = c >>> 24, r = c & 255, g = (c >>> 8) & 255, b = (c >>> 16) & 255;
+          frame.color[row + x] = (a << 24) | (Math.min(255, r * 1.15 + 55) & 255)
+            | ((g * 0.5) & 255) << 8 | ((b * 0.5) & 255) << 16;
+          whiteN++;
+        }
+      }
+    }
+  }
   if (foeDotFx) foeDotFx.draw(frame, "front");
   if (alertFx) alertFx.draw(frame, "front");
   for (const t of TORCHES) t.draw(frame, "front");
+  if (rings.length) {
+    const rp = painterFor(frame);
+    rp.place(0, 0);
+    for (const r of rings) {
+      const k = r.t / r.life;
+      const rad = r.r0 + (r.r1 - r.r0) * (1 - Math.pow(1 - k, 2));
+      // 外环实心 + 内环反向，形成"炸开"的双层感
+      if (k < 0.82) rp.ring(r.x, r.y, rad, 2, hex(r.c), 1);
+      rp.ring(r.x, r.y, Math.max(2, rad * 0.52), 1, hex(r.c), Math.max(0, 0.85 - k));
+    }
+  }
   for (const fl of floats) fl.draw(frame, "front");
   if (transFx) transFx.draw(frame, "front");
 
@@ -545,7 +712,9 @@ function draw() {
   const sy = shake > 0 ? Math.round(rnd(-shake, shake)) : 0;
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, W * SCALE, H * SCALE);
-  ctx.drawImage(off, sx * SCALE, sy * SCALE, W * SCALE, H * SCALE);
+  const dw = Math.round(W * SCALE * (1 + zoom));
+  const dh = Math.round(H * SCALE * (1 + zoom));
+  ctx.drawImage(off, sx * SCALE - (dw - W * SCALE) / 2, sy * SCALE - (dh - H * SCALE) / 2, dw, dh);
 }
 
 // ---- 界面 ----------------------------------------------------------------
@@ -602,7 +771,7 @@ function paintFin() {
   b.classList.toggle("busy", S.phase !== "ready" || !armed);
   b.querySelector("u").style.width = clamp01(S.energy / MAX_ENERGY) * 100 + "%";
   $("finTip").textContent = armed ? "就绪 · 按 5 释放" : "能量 " + Math.round(S.energy) + " / " + MAX_ENERGY;
-  const pool = FOES[S.foeIx].pool.map((k) => FINISHERS[k]);
+  const pool = curFoe().pool.map((k) => FINISHERS[k]);
   const flo = Math.round(Math.min(...pool.map((f) => f.dmg[0])) * 1.35);
   const fhi = Math.round(Math.max(...pool.map((f) => f.dmg[1])) * 1.35);
   const fd = $("finDmg");
@@ -624,13 +793,14 @@ function log(kind, text) {
 const fl = $("flash");
 let flashT = 0;
 function flash(kind) {
-  fl.classList.toggle("white", kind === "white");
+  fl.classList.remove("white", "micro");
+  if (kind) fl.classList.add(kind);
   fl.classList.add("on");
   clearTimeout(flashT);
-  flashT = setTimeout(() => { fl.classList.remove("on"); fl.classList.remove("white"); }, kind === "white" ? 160 : 90);
+  flashT = setTimeout(() => { fl.classList.remove("on", "white", "micro"); }, kind === "white" ? 150 : kind === "micro" ? 55 : 90);
 }
 
-btns.forEach((b) => b.addEventListener("click", () => chooseMove(+b.dataset.i)));
+btns.forEach((b) => b.addEventListener("click", () => { ensureAudio(); chooseMove(+b.dataset.i); }));
 $("ovBtn").addEventListener("click", restart);
 addEventListener("keydown", (e) => {
   const i = "12345".indexOf(e.key);
@@ -645,5 +815,6 @@ requestAnimationFrame(tick);
 
 window.__game = {
   S, chooseMove, MOVES, FINISHERS, addEnergy, startFinisher, paintButtons, previewOf, log,
-  get foe() { return FOES[S.foeIx]; },
+  dbg: () => ({ hitstop, zoom, foeKb, pKb, foeSink, followT, rings: rings.length, flashN, whiteN, audio: !!AC && AC.state }),
+  get foe() { return curFoe(); },
 };

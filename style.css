@@ -115,4 +115,5 @@ canvas{width:100%;height:auto;display:block;image-rendering:pixelated;image-rend
 .cine i{font-style:normal;font-size:10px;letter-spacing:.32em;color:#ffb96a;text-transform:uppercase}
 
 /* 白闪（终结技命中） */
+#flash.micro{background:radial-gradient(circle at 55% 58%,rgba(255,255,255,.42),rgba(255,255,255,0) 60%)}
 #flash.white{background:radial-gradient(circle at 55% 55%,rgba(255,255,255,.92),rgba(255,240,210,.55) 40%,rgba(255,255,255,0) 72%)}

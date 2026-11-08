@@ -8,7 +8,7 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
 page.on("console", (m) => { if (m.type() === "error") errs.push("CONSOLE " + m.text()); });
 page.on("pageerror", (e) => errs.push("PAGEERROR " + e.message));
-await page.goto(URL, { waitUntil: "load", timeout: 45000 });
+await page.goto(URL, { waitUntil: "domcontentloaded", timeout: 90000 });
 await page.waitForTimeout(1200);
 
 const r = {};

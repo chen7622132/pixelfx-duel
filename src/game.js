@@ -205,7 +205,7 @@ function gameOver(win) {
   S.phase = "over";
   document.getElementById("ovTitle").textContent = win ? "通关" : "被打倒了";
   document.getElementById("ovText").textContent = win
-    ? "三只怪全部清掉。剩下 217 个特效等你接上去。"
+    ? "三只怪全部清掉。剩下 226 个特效等你接上去。"
     : "倒在" + FOES[S.foeIx].name + "面前。再来一次？";
   document.getElementById("overlay").classList.remove("hide");
 }

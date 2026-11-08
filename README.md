@@ -1,7 +1,7 @@
 # 像素对决 · pixelfx duel
 
 用 [**pixelfx**](https://github.com/patch-gg/pixelfx)（244 个代码驱动的像素特效）做的一个**回合制像素对战 DEMO**。
-没有美术资源、没有游戏引擎，整个游戏只有一个 320×180 的像素缓冲 + 27 个特效模块。
+没有美术资源、没有游戏引擎，整个游戏只有一个 320×180 的像素缓冲 + 18 个特效模块。
 
 **▶ 在线试玩：** https://chen7622132.github.io/pixelfx-duel/
 
@@ -30,7 +30,7 @@
 - **打击感**：命中瞬间取招式自带的 `shake` / `amp` 值震屏，敌人抖动 0.2s，`ui/damage-number` 飘字（`options.text` 传真实伤害）、暴击换 `ui/crit-number` + `impacts/crit-hit`。
 - 特效 `update(dt)` 内部固定 120Hz 步进，帧率波动不影响表现。
 
-## 用了哪 27 个特效
+## 用了哪 18 个特效
 
 | 用途 | 效果 |
 |---|---|
